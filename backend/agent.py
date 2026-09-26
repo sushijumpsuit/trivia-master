@@ -8,10 +8,13 @@ Loop engineering safeguards:
 from __future__ import annotations
 
 import json
+import logging
 
 from game_state import GameState
 from llm import LLM, LLMError, Message
 from tools import TOOL_SPECS, run_tool
+
+log = logging.getLogger("trivia.agent")
 
 MAX_STEPS = 8
 MAX_TOKENS = 1024
@@ -58,10 +61,13 @@ def run_turn(llm: LLM, state: GameState, user_text: str) -> str:
             continue  # one retry: providers occasionally return a malformed tool call
 
         state.history.append(Message(role="assistant", content=reply.text, tool_calls=reply.tool_calls))
+        log.info("[game %s] model text=%r tool_calls=%s", state.id[:6], reply.text[:300],
+                 [(c.name, c.arguments) for c in reply.tool_calls])
 
         if reply.tool_calls:
             for call in reply.tool_calls:
                 result = run_tool(state, call.name, call.arguments)
+                log.info("[game %s]   %s -> %s", state.id[:6], call.name, result)
                 state.history.append(Message(role="tool", content=json.dumps(result), tool_call_id=call.id))
             continue
 
