@@ -88,4 +88,5 @@ def start_game(llm: LLM, state: GameState) -> str:
 def answer(llm: LLM, state: GameState, player_answer: str) -> str:
     # Strip angle brackets so the player can't close the tag early and smuggle in instructions.
     cleaned = player_answer.replace("<", "").replace(">", "").strip()
+    state.player_answered = True  # unlocks check_answer/update_score for the open question
     return run_turn(llm, state, f"<player_answer>{cleaned}</player_answer>")

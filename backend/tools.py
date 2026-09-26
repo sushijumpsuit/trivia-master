@@ -50,18 +50,23 @@ def generate_question(state: GameState, question: str, answer: str, difficulty: 
     state.question_number += 1
     state.current_question, state.current_answer = question.strip(), answer.strip()
     state.difficulty, state.awaiting_answer = difficulty, True
+    state.player_answered = False
     return {"status": "ok", "question_number": state.question_number}
 
 
 def check_answer(state: GameState, player_answer: str) -> dict[str, Any]:
     if not state.awaiting_answer:
         return {"error": "There is no open question to check."}
+    if not state.player_answered:
+        return {"error": "The player hasn't answered the current question yet. Wait for their answer."}
     return {"expected_answer": state.current_answer, "player_answer": player_answer}
 
 
 def update_score(state: GameState, correct: bool) -> dict[str, Any]:
     if not state.awaiting_answer:
         return {"error": "There is no open question to score (already scored?)."}
+    if not state.player_answered:
+        return {"error": "The player hasn't answered the current question yet. Only score answers the player gave."}
     correct = bool(correct)
     if correct:
         state.score += 1
@@ -71,6 +76,7 @@ def update_score(state: GameState, correct: bool) -> dict[str, Any]:
         state.streak = 0
     state.last_result = {"correct": correct, "answer": state.current_answer}
     state.awaiting_answer = False
+    state.player_answered = False
     return {"score": state.score, "streak": state.streak}
 
 
