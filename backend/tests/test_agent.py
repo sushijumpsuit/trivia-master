@@ -9,10 +9,10 @@ from llm import LLMError
 def test_start_game_registers_first_question():
     llm = FakeLLM([
         reply("", tool("generate_question", question="Capital of Malaysia?", answer="Kuala Lumpur", difficulty="easy")),
-        reply("Welcome! Capital of Malaysia?"),
+        reply("Welcome!"),
     ])
     g = GameState(topic="Malaysia")
-    assert agent.start_game(llm, g) == "Welcome! Capital of Malaysia?"
+    assert agent.start_game(llm, g) == "Welcome!"
     assert g.awaiting_answer and g.current_answer == "Kuala Lumpur"
     # history: user, assistant(tool call), tool result, assistant(text)
     assert [m.role for m in g.history] == ["user", "assistant", "tool", "assistant"]
@@ -26,9 +26,9 @@ def test_answer_turn_checks_scores_and_asks_next():
         reply("", tool("check_answer", "a", player_answer="Kuala Lumpur")),
         reply("", tool("update_score", "b", correct=True)),
         reply("", tool("generate_question", "c", question="q2", answer="Penang", difficulty="medium")),
-        reply("Correct! Next: q2?"),
+        reply("Correct!"),
     ])
-    assert agent.answer(llm, g, "Kuala Lumpur") == "Correct! Next: q2?"
+    assert agent.answer(llm, g, "Kuala Lumpur") == "Correct!"
     assert (g.score, g.streak, g.question_number, g.current_question) == (1, 1, 2, "q2")
 
 
@@ -36,10 +36,10 @@ def test_model_that_forgets_to_register_a_question_gets_nudged():
     llm = FakeLLM([
         reply("Here's a question: what is 2+2?"),  # forgot the tool
         reply("", tool("generate_question", question="2+2?", answer="4", difficulty="easy")),
-        reply("What is 2+2?"),
+        reply("Welcome to maths trivia!"),
     ])
     g = GameState(topic="maths")
-    assert agent.start_game(llm, g) == "What is 2+2?"
+    assert agent.start_game(llm, g) == "Welcome to maths trivia!"
     assert any("Game engine" in m.content for m in g.history if m.role == "user")
 
 
@@ -53,8 +53,8 @@ def test_step_cap_stops_a_looping_model():
 def test_one_llm_failure_is_retried_two_are_raised():
     ok = FakeLLM([LLMError("blip"),
                   reply("", tool("generate_question", question="q", answer="a", difficulty="easy")),
-                  reply("q?")])
-    assert agent.start_game(ok, GameState(topic="t")) == "q?"
+                  reply("Hi!")])
+    assert agent.start_game(ok, GameState(topic="t")) == "Hi!"
     with pytest.raises(LLMError):
         agent.start_game(FakeLLM([LLMError("a"), LLMError("b")]), GameState(topic="t"))
 
@@ -86,3 +86,16 @@ def test_garbage_reply_is_replaced_with_a_safe_reaction():
 def test_clean_reply_keeps_normal_text_and_strips_invisible_characters():
     g = GameState(topic="t")
     assert agent.clean_reply("Nice\u200b one!\xa0Spot on.", g) == "Nice one! Spot on."
+
+
+def test_questions_written_in_the_reply_are_removed():
+    """Bug 3 follow-up: the model ignored the prompt and wrote the next question twice in its reply."""
+    g = GameState(topic="Rick and Morty")
+    text = ("Oops! The correct answer was **Citadel of Ricks**. Let's keep going\u2014what\u2019s the name of the "
+            "device that lets you summon a Meeseeks?Your turn! What's the name of the device that lets you summon a Meeseeks?")
+    assert agent.clean_reply(text, g) == "Oops! The correct answer was Citadel of Ricks. Your turn!"
+
+
+def test_reply_that_is_only_a_question_falls_back_to_result_message():
+    g = GameState(topic="t", last_result={"correct": True, "answer": "x"})
+    assert agent.clean_reply("Ready for the next one?", g) == "Correct, nice one!"

@@ -43,7 +43,8 @@ _INVISIBLE = re.compile("[\u200b-\u200f\u2060\ufeff]")
 
 
 def clean_reply(text: str, state: GameState) -> str:
-    """Strip invisible characters and fall back to a safe reaction if the model's text is garbage.
+    """Strip invisible characters and any question the model wrote, and fall back to a safe
+    reaction if the model's text is garbage.
 
     Reasoning models occasionally degenerate into filler (zero-width spaces, '...', 'Oops!').
     The game state is correct either way, so we only need a sensible sentence to show.
@@ -51,6 +52,11 @@ def clean_reply(text: str, state: GameState) -> str:
     text = _INVISIBLE.sub("", text).replace("\xa0", " ")
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    text = text.replace("**", "").replace("__", "")  # the page shows plain text, not markdown
+    # The page shows the registered question itself, so drop any question the model wrote anyway.
+    # Split after . ! ? followed by a space, or right after ? even with no space ("...Meeseeks?Your turn!").
+    sentences = re.split(r"(?<=[.!?])\s+|(?<=\?)(?=\S)", text)
+    text = " ".join(part for part in sentences if "?" not in part).strip()
     letters = sum(ch.isalpha() for ch in text)
     looks_broken = (not text or len(text) > MAX_REPLY_CHARS or letters < 0.5 * len(text)
                     or "…" * 3 in text.replace(" ", ""))
