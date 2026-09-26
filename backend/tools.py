@@ -5,6 +5,7 @@ Each tool function validates the call against the game state. Invalid calls retu
 """
 from __future__ import annotations
 
+import re
 from typing import Any, Callable
 
 from game_state import DIFFICULTIES, GameState
@@ -40,6 +41,14 @@ TOOL_SPECS: list[ToolSpec] = [
 ]
 
 
+def normalise_question(text: str) -> str:
+    """Lowercase and drop punctuation/extra spaces, so trivial differences don't hide a repeat.
+
+    Exact repeats only. Reworded repeats are Phase 2's job (ChromaDB similarity search).
+    """
+    return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
+
+
 def generate_question(state: GameState, question: str, answer: str, difficulty: str) -> dict[str, Any]:
     if state.awaiting_answer:
         return {"error": "The current question hasn't been scored yet. Call check_answer and update_score first."}
@@ -47,6 +56,10 @@ def generate_question(state: GameState, question: str, answer: str, difficulty: 
         return {"error": f"difficulty must be one of {DIFFICULTIES}"}
     if not question.strip() or not answer.strip():
         return {"error": "question and answer must not be empty"}
+    key = normalise_question(question)
+    if key in state.asked_questions:
+        return {"error": "You already asked this question in this game. Write a different question."}
+    state.asked_questions.append(key)
     state.question_number += 1
     state.current_question, state.current_answer = question.strip(), answer.strip()
     state.difficulty, state.awaiting_answer = difficulty, True

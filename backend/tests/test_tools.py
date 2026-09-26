@@ -19,8 +19,8 @@ def test_full_question_cycle_updates_score_and_streak():
 
 def test_wrong_answer_resets_streak_but_keeps_best():
     g = new_game()
-    for correct in (True, True, False):
-        run_tool(g, "generate_question", {"question": "q", "answer": "a", "difficulty": "easy"})
+    for i, correct in enumerate((True, True, False)):
+        run_tool(g, "generate_question", {"question": f"q{i}", "answer": "a", "difficulty": "easy"})
         g.player_answered = True
         run_tool(g, "update_score", {"correct": correct})
     assert (g.score, g.streak, g.best_streak) == (2, 0, 2)
@@ -67,3 +67,17 @@ def test_cannot_score_or_check_a_question_the_player_has_not_answered():
     assert "error" in run_tool(g, "check_answer", {"player_answer": "b"})
     assert "error" in run_tool(g, "generate_question", {"question": "q3", "answer": "c", "difficulty": "easy"})
     assert (g.score, g.question_number, g.current_question) == (1, 2, "q2")
+
+
+def test_same_question_cannot_be_asked_twice_in_a_game():
+    """Bug 4 regression: the model registered Q4 with exactly the same text as Q3."""
+    g = new_game()
+    q = "What is the name of the governing body composed of multiple Ricks that oversees the multiverse?"
+    run_tool(g, "generate_question", {"question": q, "answer": "Council of Ricks", "difficulty": "easy"})
+    g.player_answered = True
+    run_tool(g, "update_score", {"correct": False})
+    again = run_tool(g, "generate_question", {"question": "  what is the NAME of the governing body composed of "
+                                              "multiple Ricks that oversees the multiverse", "answer": "x", "difficulty": "easy"})
+    assert "error" in again and g.question_number == 1 and not g.awaiting_answer
+    assert run_tool(g, "generate_question", {"question": "Who is Morty's sister?", "answer": "Summer",
+                                             "difficulty": "easy"})["status"] == "ok"

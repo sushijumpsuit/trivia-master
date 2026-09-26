@@ -19,3 +19,9 @@
    - e.g.: `Oops! The correct answer was **Citadel of Ricks**. Let's keep going—what's the name of the device that lets you summon a Meeseeks?Your turn! What's the name of the device that lets you summon a Meeseeks?`
    - why: a prompt rule is only a request. `gpt-oss-120b` doesn't follow "never write the question" reliably, so the rule has to live in code.
    - how to fix: `clean_reply()` now drops every sentence that contains a question mark, since the reply should only be a reaction and the real question always comes from game state. It also splits "Meeseeks?Your" where the model left no space, and strips `**` markdown because the page shows plain text. If nothing is left, it uses the result message instead. Trade-off: the host can't ask rhetorical questions like "Ready?". Added tests that replay this exact text.
+
+4. Same question asked twice in a row
+ - e.g.: Q3 and Q4 were both `What is the name of the governing body composed of multiple Ricks that oversees the multiverse?`
+ - what went wrong: after I answered Q3 wrongly (close answer), the model registered the exact same question again as Q4.
+ - why: nothing in Phase 1 stopped repeats. `generate_question` accepted any text, and the model probably re-asked to give me another try.
+ - how to fix: the game now keeps a list of every question asked (lowercased, punctuation removed). `generate_question` rejects a repeat with an error telling the model to write a different question, and the model self-corrects on its next step. This only catches exact repeats in one game; reworded repeats across games are Phase 2's job (ChromaDB `check_duplicate`). Added a regression test with the real question.

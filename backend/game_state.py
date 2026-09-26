@@ -23,6 +23,7 @@ class GameState:
     awaiting_answer: bool = False        # True between generate_question and update_score
     player_answered: bool = False        # True once the player submits an answer to the open question
     last_result: dict | None = None      # {"correct": bool, "answer": str} for the question just scored
+    asked_questions: list[str] = field(default_factory=list)  # normalised text of every question this game
     history: list[Message] = field(default_factory=list)
 
     def public_view(self) -> dict:
