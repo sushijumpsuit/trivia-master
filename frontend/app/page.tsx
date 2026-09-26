@@ -3,7 +3,11 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { GameResponse, startGame, submitAnswer } from "@/lib/api";
 
-type ChatLine = { from: "host" | "player"; text: string; correct?: boolean };
+type ChatLine = { from: "host" | "player" | "question"; text: string; correct?: boolean };
+
+// The question comes from game state (what the server registered), not from the model's free text.
+const questionLine = (g: GameResponse): ChatLine[] =>
+  g.current_question ? [{ from: "question", text: `Q${g.question_number}: ${g.current_question}` }] : [];
 
 const SUGGESTIONS = ["90s sitcoms", "Malaysian history", "Space exploration", "Football World Cups"];
 
@@ -29,7 +33,7 @@ export default function Home() {
     try {
       const res = await startGame(t);
       setGame(res);
-      setChat([{ from: "host", text: res.message }]);
+      setChat([{ from: "host", text: res.message }, ...questionLine(res)]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -48,7 +52,7 @@ export default function Home() {
     try {
       const res = await submitAnswer(game.game_id, a);
       setGame(res);
-      setChat((c) => [...c, { from: "host", text: res.message, correct: res.last_result?.correct }]);
+      setChat((c) => [...c, { from: "host", text: res.message, correct: res.last_result?.correct }, ...questionLine(res)]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
     } finally {
@@ -108,7 +112,9 @@ export default function Home() {
                   <p className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 ${
                     line.from === "player"
                       ? "bg-indigo-600 text-white"
-                      : line.correct === true
+                      : line.from === "question"
+                        ? "border border-indigo-200 bg-indigo-50 font-medium text-indigo-950 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-100"
+                        : line.correct === true
                         ? "bg-emerald-100 text-emerald-950 dark:bg-emerald-950 dark:text-emerald-100"
                         : line.correct === false
                           ? "bg-rose-100 text-rose-950 dark:bg-rose-950 dark:text-rose-100"
