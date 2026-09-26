@@ -1,0 +1,17 @@
+## BUGS
+1. Question number skip
+ - what went wrong: after answering question 1, chatbot skipped to q3 straightaway.
+ - why: `update_score` only checked "is there an open question that hasn't been scored?", not "has the player actually answered it?". So in one turn the model could score my answer to Q1, register Q2, then call `update_score` again on Q2 (which I never saw) and move on to Q3. It was also a scoring hole: a point could be given for an unseen question. The Phase 1 tests missed it because the fake LLM always behaved perfectly. (Likely cause from reading the code; the log of that exact turn wasn't captured.)
+ - how to fix: enforce "one score per player answer" in the server, not the prompt. Added a `player_answered` flag to the game state: submitting an answer sets it, `check_answer` / `update_score` refuse to run unless it's set, and scoring or registering a new question clears it. Added a regression test that replays the skip sequence and checks Q2 can't be scored or skipped.
+
+2. Chatbot reply gibberish
+ - what went wrong: after user answers to a question, chatbot generates gibberish before coming out with a new question
+ - e.g.: `Close, but the phrase is **Wubba lubba dub dub**. Next: **What is the **…​​​ … … Oops! … Sorry… …` (full of invisible zero-width spaces)
+ - why: the design asked the model to do the same job twice: register the question with `generate_question` AND retype it in its reply. The log showed the question had already been registered; the reasoning model (`gpt-oss-120b` on Groq) then degenerated while retyping it. Nothing guaranteed the retyped question matched the registered one either.
+ - how to fix: stopped asking the model to write the question. The system prompt now says the reply is only a short reaction, and the frontend shows the question straight from the server's game state (`current_question`) in its own bubble. Added a safety net, `clean_reply()`: strips invisible characters, and if the text still looks broken (too long, mostly symbols, repeated "…") it swaps in a reaction built from the real result, e.g. "Not quite. The answer was X." Added regression tests using the actual garbage text.
+
+3. duplicated question in one chat bubble:
+ - e.g.: `**Question 2:** Who is known as the “Father of Independence” for ...? (just one name)**Question 2:** Who is known as the “Father of Independence” for leading Malaysia to independence? (just one name)`
+ - what went wrong: chatbot generates repeating sentences/question in one chat bubble.
+ - why: same root cause as bug 2: the model was retyping the question in its reply, and sometimes wrote it twice (with odd invisible spacing characters mixed in).
+ - how to fix: fixed by the same change as bug 2: the model no longer writes the question at all; the UI displays the registered question from game state, so it can only appear once. If the model ignores the prompt and writes the question anyway, it would show up next to the question bubble; watch for that, and if it happens, add a check in `clean_reply()` that removes question text from the reply.
