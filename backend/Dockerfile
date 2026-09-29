@@ -12,7 +12,9 @@ WORKDIR /app
 # Install dependencies first so code changes don't reinstall them (pytest is dev only)
 COPY requirements.txt .
 RUN grep -v '^pytest' requirements.txt > requirements.prod.txt \
-    && pip install -r requirements.prod.txt
+    && pip install -r requirements.prod.txt \
+    && mkdir -p chroma_data logs \
+    && chown -R app:app /app
 
 USER app
 
@@ -20,7 +22,6 @@ USER app
 RUN python -c "from chromadb.utils.embedding_functions import DefaultEmbeddingFunction as E; E()(['warm up'])"
 
 COPY --chown=app:app . .
-RUN mkdir -p chroma_data logs
 
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
