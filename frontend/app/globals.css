@@ -24,3 +24,45 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ---------- Flashcards ---------- */
+.card-scene {
+  perspective: 1400px;
+}
+.card-inner {
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.card-inner.is-flipped {
+  transform: rotateY(180deg);
+}
+.card-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.card-back {
+  transform: rotateY(180deg);
+}
+.stack-card {
+  transition: transform 0.35s ease, opacity 0.35s ease;
+}
+.stack-card.is-throwing {
+  transition: transform 0.55s cubic-bezier(0.5, 0, 0.75, 0), opacity 0.55s ease-in;
+}
+@keyframes pulse-dot {
+  0%, 80%, 100% { opacity: 0.25; transform: scale(0.8); }
+  40% { opacity: 1; transform: scale(1); }
+}
+.pulse-dot {
+  animation: pulse-dot 1.2s infinite ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) {
+  .card-inner,
+  .stack-card,
+  .stack-card.is-throwing {
+    transition-duration: 0.01ms !important;
+  }
+  .pulse-dot {
+    animation: none;
+  }
+}

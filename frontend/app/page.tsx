@@ -1,168 +1,185 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
-import { GameResponse, startGame, submitAnswer } from "@/lib/api";
+import { useEffect, useRef, useState } from "react";
+import AnswerBar from "@/components/AnswerBar";
+import CardStack, { type CardPhase } from "@/components/CardStack";
+import GameOver from "@/components/GameOver";
+import Hud from "@/components/Hud";
+import RoundBreak from "@/components/RoundBreak";
+import SetupScreen from "@/components/SetupScreen";
+import { GameResponse, GameSettings, LastResult, nextRound, startGame, submitAnswer } from "@/lib/api";
 
-type ChatLine = { from: "host" | "player" | "question"; text: string; correct?: boolean };
+type Screen = "setup" | "playing" | "roundBreak" | "gameOver";
+type Card = { question: string; index: number; roundKey: number };
 
-// The question comes from game state (what the server registered), not from the model's free text.
-const questionLine = (g: GameResponse): ChatLine[] =>
-  g.current_question ? [{ from: "question", text: `Q${g.question_number}: ${g.current_question}` }] : [];
-
-const SUGGESTIONS = ["90s sitcoms", "Malaysian history", "Space exploration", "Football World Cups"];
+const AUTO_THROW_MS = 2500; // how long the result stays visible before the card flies away
+const THROW_MS = 550;       // must match .stack-card.is-throwing in globals.css
 
 export default function Home() {
-  const [topic, setTopic] = useState("");
-  const [answer, setAnswer] = useState("");
+  const [screen, setScreen] = useState<Screen>("setup");
+  const [settings, setSettings] = useState<GameSettings | undefined>();
   const [game, setGame] = useState<GameResponse | null>(null);
-  const [chat, setChat] = useState<ChatLine[]>([]);
+  const [card, setCard] = useState<Card | null>(null);
+  const [phase, setPhase] = useState<CardPhase>("answering");
+  const [answer, setAnswer] = useState("");
+  const [playerAnswer, setPlayerAnswer] = useState("");
+  const [result, setResult] = useState<LastResult | null>(null);
+  const [hostLine, setHostLine] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const chatEnd = useRef<HTMLDivElement>(null);
+
+  // Refs hold the latest values for timers and key presses (state inside a timer would be stale).
+  const inputRef = useRef<HTMLInputElement>(null);
+  const phaseRef = useRef<CardPhase>("answering");
+  const gameRef = useRef<GameResponse | null>(null);
+  const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
-    chatEnd.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chat, loading]);
+    const pending = timers.current;
+    return () => pending.forEach(clearTimeout);
+  }, []);
 
-  async function handleStart(e: FormEvent, chosen?: string) {
-    e.preventDefault();
-    const t = (chosen ?? topic).trim();
-    if (!t || loading) return;
+  function go(p: CardPhase) {
+    phaseRef.current = p;
+    setPhase(p);
+  }
+
+  function later(fn: () => void, ms: number) {
+    timers.current.push(setTimeout(fn, ms));
+  }
+
+  function clearTimers() {
+    timers.current.forEach(clearTimeout);
+    timers.current = [];
+  }
+
+  function focusInput() {
+    later(() => inputRef.current?.focus(), 0);
+  }
+
+  function showRound(res: GameResponse) {
+    gameRef.current = res;
+    setGame(res);
+    setCard({ question: res.current_question ?? "", index: res.round_question, roundKey: res.round });
+    setHostLine(res.message);
+    setResult(null);
+    setAnswer("");
+    go("answering");
+    setScreen("playing");
+    focusInput();
+  }
+
+  async function begin(s: GameSettings) {
+    setSettings(s);
     setLoading(true);
     setError(null);
     try {
-      const res = await startGame(t);
-      setGame(res);
-      setChat([{ from: "host", text: res.message }, ...questionLine(res)]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
+      showRound(await startGame(s));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
     } finally {
       setLoading(false);
     }
   }
 
-  async function handleAnswer(e: FormEvent) {
-    e.preventDefault();
-    const a = answer.trim();
-    if (!a || !game || loading) return;
-    setAnswer("");
-    setChat((c) => [...c, { from: "player", text: a }]);
+  async function startNextRound() {
+    if (!game) return;
     setLoading(true);
     setError(null);
+    try {
+      showRound(await nextRound(game.game_id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function checkAnswer() {
+    if (!game || phaseRef.current !== "answering") return;
+    const a = answer.trim();
+    setPlayerAnswer(a);
+    setError(null);
+    go("checking");
     try {
       const res = await submitAnswer(game.game_id, a);
+      gameRef.current = res;
       setGame(res);
-      setChat((c) => [...c, { from: "host", text: res.message, correct: res.last_result?.correct }, ...questionLine(res)]);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-    } finally {
-      setLoading(false);
+      setResult(res.last_result);
+      setHostLine("");
+      go("revealed"); // the card flips
+      later(throwCard, AUTO_THROW_MS);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong");
+      go("answering");
+      focusInput();
     }
   }
 
-  function newGame() {
-    setGame(null);
-    setChat([]);
-    setTopic("");
-    setError(null);
+  function throwCard() {
+    if (phaseRef.current !== "revealed") return; // Enter and the timer can both fire; act once
+    clearTimers();
+    go("throwing");
+    later(() => {
+      const g = gameRef.current;
+      if (!g) return;
+      if (g.finished) return setScreen("gameOver");
+      if (g.round_over) return setScreen("roundBreak");
+      setCard({ question: g.current_question ?? "", index: g.round_question, roundKey: g.round });
+      setResult(null);
+      setAnswer("");
+      go("answering");
+      focusInput();
+    }, THROW_MS);
+  }
+
+  function onAnswerBarSubmit() {
+    if (phaseRef.current === "answering") void checkAnswer();
+    else if (phaseRef.current === "revealed") throwCard();
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-6 px-4 py-8">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">Trivia Master</h1>
-        {game && (
-          <button onClick={newGame} className="text-sm text-zinc-500 underline hover:text-zinc-800 dark:hover:text-zinc-200">
-            New game
-          </button>
-        )}
-      </header>
-
-      {!game ? (
-        <form onSubmit={(e) => handleStart(e)} className="flex flex-col gap-4 rounded-2xl border border-zinc-200 p-6 dark:border-zinc-800">
-          <label htmlFor="topic" className="text-lg font-medium">Pick any topic</label>
-          <div className="flex gap-2">
-            <input
-              id="topic"
-              value={topic}
-              onChange={(e) => setTopic(e.target.value)}
-              maxLength={80}
-              placeholder="e.g. organic chemistry"
-              className="flex-1 rounded-lg border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
-            />
-            <button disabled={loading || !topic.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white disabled:opacity-50">
-              {loading ? "Starting..." : "Start"}
-            </button>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {SUGGESTIONS.map((s) => (
-              <button key={s} type="button" disabled={loading} onClick={(e) => { setTopic(s); handleStart(e, s); }}
-                className="rounded-full border border-zinc-300 px-3 py-1 text-sm hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:hover:bg-zinc-900">
-                {s}
-              </button>
-            ))}
-          </div>
-        </form>
-      ) : (
-        <div className="grid flex-1 gap-6 md:grid-cols-[1fr_220px]">
-          <section className="flex min-h-[420px] flex-col rounded-2xl border border-zinc-200 dark:border-zinc-800">
-            <div className="flex-1 space-y-3 overflow-y-auto p-4">
-              {chat.map((line, i) => (
-                <div key={i} className={line.from === "player" ? "flex justify-end" : "flex justify-start"}>
-                  <p className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 ${
-                    line.from === "player"
-                      ? "bg-indigo-600 text-white"
-                      : line.from === "question"
-                        ? "border border-indigo-200 bg-indigo-50 font-medium text-indigo-950 dark:border-indigo-900 dark:bg-indigo-950/40 dark:text-indigo-100"
-                        : line.correct === true
-                        ? "bg-emerald-100 text-emerald-950 dark:bg-emerald-950 dark:text-emerald-100"
-                        : line.correct === false
-                          ? "bg-rose-100 text-rose-950 dark:bg-rose-950 dark:text-rose-100"
-                          : "bg-zinc-100 dark:bg-zinc-900"
-                  }`}>
-                    {line.text}
-                  </p>
-                </div>
-              ))}
-              {loading && <p className="text-sm text-zinc-500">The host is thinking...</p>}
-              <div ref={chatEnd} />
-            </div>
-            <form onSubmit={handleAnswer} className="flex gap-2 border-t border-zinc-200 p-3 dark:border-zinc-800">
-              <input
-                value={answer}
-                onChange={(e) => setAnswer(e.target.value)}
-                maxLength={200}
-                placeholder="Your answer"
-                autoFocus
-                className="flex-1 rounded-lg border border-zinc-300 bg-transparent px-3 py-2 dark:border-zinc-700"
-              />
-              <button disabled={loading || !answer.trim()} className="rounded-lg bg-indigo-600 px-4 py-2 font-medium text-white disabled:opacity-50">
-                Answer
-              </button>
-            </form>
-          </section>
-
-          <aside className="flex flex-col gap-3 rounded-2xl border border-zinc-200 p-4 dark:border-zinc-800">
-            <p className="text-sm text-zinc-500">Topic</p>
-            <p className="-mt-2 font-medium">{game.topic}</p>
-            <Stat label="Score" value={game.score} />
-            <Stat label="Streak" value={game.streak} />
-            <Stat label="Best streak" value={game.best_streak} />
-            <Stat label="Question" value={game.question_number} />
-          </aside>
-        </div>
+    <main className="flex min-h-screen w-full flex-col">
+      {error && (
+        <p role="alert" className="fixed inset-x-0 top-3 z-50 mx-auto w-fit max-w-[90vw] rounded-xl bg-rose-600 px-4 py-2 text-sm text-white shadow-lg">
+          {error}
+        </p>
       )}
 
-      {error && <p role="alert" className="rounded-lg bg-rose-100 px-4 py-2 text-rose-900 dark:bg-rose-950 dark:text-rose-100">{error}</p>}
-    </main>
-  );
-}
+      {screen === "setup" && <SetupScreen initial={settings} loading={loading} onStart={begin} />}
 
-function Stat({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="flex items-baseline justify-between">
-      <span className="text-sm text-zinc-500">{label}</span>
-      <span className="text-lg font-semibold capitalize">{value}</span>
-    </div>
+      {screen === "playing" && game && card && (
+        <>
+          <Hud game={game} cardIndex={card.index} answered={phase === "revealed" || phase === "throwing"} />
+          <p className="mx-auto mt-4 h-10 max-w-xl px-4 text-center text-sm italic text-zinc-500">
+            {hostLine && <>🎙️ {hostLine}</>}
+          </p>
+          <div className="flex flex-1 items-center justify-center overflow-x-hidden pb-36 pt-2">
+            <CardStack
+              roundKey={card.roundKey}
+              index={card.index}
+              total={game.questions_per_round}
+              question={card.question}
+              topic={game.topic}
+              phase={phase}
+              playerAnswer={playerAnswer}
+              result={result}
+            />
+          </div>
+          <AnswerBar inputRef={inputRef} value={answer} phase={phase} onChange={setAnswer} onSubmit={onAnswerBarSubmit} />
+        </>
+      )}
+
+      {screen === "roundBreak" && game && <RoundBreak game={game} loading={loading} onNext={startNextRound} />}
+
+      {screen === "gameOver" && game && (
+        <GameOver
+          game={game}
+          loading={loading}
+          onPlayAgain={() => settings && begin(settings)}
+          onNewSetup={() => setScreen("setup")}
+        />
+      )}
+    </main>
   );
 }

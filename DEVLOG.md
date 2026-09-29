@@ -76,3 +76,9 @@
  - why: the root `.gitignore` came from a Python virtualenv template with broad rules like `[Ll]ib`, `[Bb]in` and `[Ss]cripts`. They are meant for a repo that *is* a virtualenv, and they matched any folder called `lib`, including the Next.js one.
  - how to fix: removed those six rules (`venv/` already ignores the virtualenv) and committed `frontend/lib/api.ts`. Checked that only that file became visible.
  - lesson: check what a template `.gitignore` actually ignores (`git check-ignore -v <path>`), and test a fresh clone before calling a phase done. Phase 6 (README) should include a clean-clone build test.
+
+10. Thrown flashcard showed both faces at once
+ - e.g.: in a screenshot taken mid-throw, the red result card looked doubled and see-through, with the question side showing through.
+ - what went wrong: the throw animation faded the card out (opacity to 0) while it flew off screen.
+ - why: in CSS, `opacity` below 1 on an element forces its children to be flattened into 2D. The flip relies on 3D (`transform-style: preserve-3d` and `backface-visibility: hidden`), so once flattened, the hidden front face showed through the back.
+ - how to fix: the top card never changes opacity; it flies off screen fully solid (it leaves the screen anyway). Only the cards behind it are faded. Found by taking automated screenshots of each stage (Playwright, against a fake backend), not by reading the code.

@@ -36,10 +36,12 @@ backend/
     __init__.py      get_llm() factory that reads LLM_PROVIDER
   tools.py           tool JSON schemas + the Python functions that run them
   memory.py          all ChromaDB code (store, similarity search)
-  game_state.py      score / streak per game
+  game_state.py      score / streak / rounds per game
   sanity_check.py    Phase 0 check that the configured LLM and Chroma work
   tests/             pytest tests
-frontend/app/        Next.js pages and components
+frontend/app/        Next.js page (a small state machine: setup, playing, round break, game over)
+frontend/components/ SetupScreen, CardStack (flip + throw), AnswerBar, Hud, RoundBreak, GameOver
+frontend/lib/api.ts  typed client for the backend API
 ```
 
 Keep these responsibilities separate. Routes should not contain agent logic; the agent should not contain Chroma code.
@@ -77,7 +79,7 @@ Keep these responsibilities separate. Routes should not contain agent logic; the
 0. Setup: venv, packages, sanity check, first commit (done 26 Sep 2026, on Groq)
 1. Core game loop without memory: `llm/base.py` interface + first adapter (Groq or Gemini, free), neutral tool schemas, agent loop, `/game/start` and `/game/{id}/answer`, minimal UI; then add the Anthropic adapter (done 29 Sep 2026)
 2. ChromaDB memory: duplicate check inside `generate_question` (memory.py) using a hybrid rule (embedding distance + answer match, cutoffs picked with tune_threshold.py, see DEVLOG bug 8); verify 20+ rounds across 2 games with no repeats (done 29 Sep 2026: 29 questions over 2 games, 7 repeats caught, 0 false rejections)
-3. **Polish: host personality, summary, frontend feedback; eval script that auto-plays N rounds and reports duplicate rate + loop steps per question, per provider**
+3. **Rounds + flashcard UI (topics per round, questions per round, stacked cards that flip and get thrown), end-of-round and end-of-game screens; then eval script that auto-plays N rounds and reports duplicate rate + loop steps per question, per provider**
 4. Docker + docker-compose (Chroma on a named volume)
 5. Deploy: backend on EC2 with HTTPS, frontend on Amplify; per-visitor rate limit + daily question cap so the public demo can't drain API credit
 6. README, architecture diagram, demo GIF
