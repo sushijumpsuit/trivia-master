@@ -31,7 +31,8 @@ def to_anthropic_messages(messages: list[Message]) -> list[dict[str, Any]]:
                 blocks.append({"type": "text", "text": m.content})
             blocks += [{"type": "tool_use", "id": c.id, "name": c.name, "input": c.arguments}
                        for c in m.tool_calls]
-            out.append({"role": "assistant", "content": blocks})
+            if blocks:  # Anthropic also rejects an empty assistant message
+                out.append({"role": "assistant", "content": blocks})
         else:
             block = {"type": "tool_result", "tool_use_id": m.tool_call_id, "content": m.content}
             prev = out[-1] if out else None

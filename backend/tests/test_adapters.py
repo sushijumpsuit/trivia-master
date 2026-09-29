@@ -142,3 +142,9 @@ def test_anthropic_merges_player_message_after_tool_results():
     out = to_anthropic_messages(history)
     assert [m["role"] for m in out] == ["user", "assistant", "user"]
     assert out[2]["content"][-1] == {"type": "text", "text": "<player_answer>KL</player_answer>"}
+
+
+def test_empty_assistant_messages_are_never_sent():
+    history = [Message("user", "hi"), Message("assistant", ""), Message("user", "again")]
+    assert [m["role"] for m in to_openai_messages("s", history)] == ["system", "user", "user"]
+    assert all(m["role"] != "assistant" for m in to_anthropic_messages(history))

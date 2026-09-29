@@ -201,3 +201,39 @@ def test_broken_memory_still_starts_the_game():
     llm = FakeLLM([reply("", q(intro="Hi"))])
     assert agent.start_game(llm, GameState(topics=["t"])) == "Hi"
     assert "none yet" in llm.calls[0]["system"]
+
+
+# ---------- Bug 12: empty reply after scoring left the game with no open question (409) ----------
+
+def test_empty_reply_is_not_stored_and_the_turn_recovers():
+    g = started()
+    llm = FakeLLM([reply("", score(), q("dup", question="q1", answer="KL")),  # repeat -> rejected
+                   reply(""),                                               # empty: no text, no tools
+                   reply("", q("ok", question="Largest state?", answer="Sarawak"))])
+    assert agent.answer(llm, g, "KL") == "Correct!"
+    assert g.current_question == "Largest state?"
+    assert not any(m.role == "assistant" and not m.content and not m.tool_calls for m in g.history)
+
+
+def test_failed_answer_turn_rolls_back_so_a_retry_works():
+    """The exact log: scored, repeat rejected, then the provider kept failing."""
+    g = started()
+    before = (g.score, g.scored_count, g.awaiting_answer, g.current_question, len(g.history))
+    failing = FakeLLM([reply("", score(), q("dup", question="q1", answer="KL")), LLMError("400"), LLMError("400")])
+    with pytest.raises(LLMError):
+        agent.answer(failing, g, "KL")
+    assert (g.score, g.scored_count, g.awaiting_answer, g.current_question, len(g.history)) == before
+    assert not g.player_answered and g.last_result is None
+    retry = FakeLLM([reply("", score(), q("n", question="Largest state?", answer="Sarawak"))])
+    assert agent.answer(retry, g, "KL") == "Correct!" and g.score == 1  # no 409: the question is still open
+
+
+def test_failed_next_round_rolls_back_to_the_round_break():
+    g = started(topics=("A", "B"), per_round=3)
+    for i in range(3):
+        step = [score()] + ([q(f"n{i}", question=f"q{i + 2}", answer="x")] if i < 2 else [])
+        agent.answer(FakeLLM([reply("", *step)]), g, "x")
+    with pytest.raises(LLMError):
+        agent.next_round(FakeLLM([LLMError("a"), LLMError("b")]), g)
+    assert g.round_index == 0 and g.round_over  # still at the break; "Start round 2" can be pressed again
+    assert agent.next_round(FakeLLM([reply("", q("r2", question="B?", answer="b", intro="Round 2!"))]), g) == "Round 2!"

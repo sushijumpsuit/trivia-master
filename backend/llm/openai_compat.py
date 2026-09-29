@@ -26,6 +26,8 @@ def to_openai_messages(system: str, messages: list[Message],
         if m.role == "user":
             out.append({"role": "user", "content": m.content})
         elif m.role == "assistant":
+            if not m.content and not m.tool_calls:
+                continue  # providers reject an assistant message with neither content nor tool calls
             msg: dict[str, Any] = {"role": "assistant", "content": m.content or None}
             if include_reasoning and m.reasoning:
                 msg["reasoning_content"] = m.reasoning

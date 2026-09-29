@@ -7,6 +7,8 @@ Loop engineering safeguards:
 """
 from __future__ import annotations
 
+import copy
+import functools
 import json
 import logging
 import re
@@ -19,7 +21,7 @@ from tools import TOOL_SPECS, run_tool
 log = logging.getLogger("trivia.agent")
 
 MAX_STEPS = 8
-MAX_TOKENS = 1024
+MAX_TOKENS = 4096  # thinking models spend tokens on reasoning first; 1024 sometimes left nothing for the reply
 
 SYSTEM_PROMPT = """You are an upbeat, witty trivia host running a one-on-one quiz in rounds.
 
@@ -155,6 +157,13 @@ def run_turn(llm: LLM, state: GameState, user_text: str, answering: bool) -> str
                 raise
             continue  # one retry: providers occasionally return a malformed tool call
 
+        if not reply.text and not reply.tool_calls:
+            # Empty reply (e.g. the token budget went on reasoning). Don't store it: providers reject an
+            # assistant message with no content and no tool calls (DEVLOG bug 12). Nudge and try again.
+            log.warning("[game %s] empty model reply, retrying", state.id[:6])
+            state.history.append(Message(role="user", content="(Game engine) Your last reply was empty. Call the tool now."))
+            continue
+
         state.history.append(Message(role="assistant", content=reply.text, tool_calls=reply.tool_calls,
                                      reasoning=reply.reasoning))
         log.info("[game %s] model text=%r tool_calls=%s", state.id[:6], reply.text[:300],
@@ -186,11 +195,31 @@ class RoundError(Exception):
     """Asked to start a round when that isn't allowed (round still running, or game over)."""
 
 
+def atomic(turn):
+    """All-or-nothing turns: if a turn fails, put the game back exactly as it was.
+
+    Without this, a turn could score the answer and then fail before asking the next question,
+    leaving the game with no open question (the player's retry then got 409; DEVLOG bug 12).
+    Questions only reach the memory when registered, which ends the turn, so nothing needs undoing there.
+    """
+    @functools.wraps(turn)
+    def wrapper(llm: LLM, state: GameState, *args):
+        snapshot = copy.deepcopy(state)
+        try:
+            return turn(llm, state, *args)
+        except Exception:
+            state.__dict__.update(snapshot.__dict__)
+            raise
+    return wrapper
+
+
+@atomic
 def start_game(llm: LLM, state: GameState) -> str:
     load_used_answers(state)
     return run_turn(llm, state, _round_start_message(state), answering=False)
 
 
+@atomic
 def next_round(llm: LLM, state: GameState) -> str:
     if not state.round_over or state.finished:
         raise RoundError("The current round isn't over, or the game has finished.")
@@ -206,6 +235,7 @@ def _round_start_message(state: GameState) -> str:
             f"Register the first question, with a one-sentence welcome to the round as the intro.")
 
 
+@atomic
 def answer(llm: LLM, state: GameState, player_answer: str) -> str:
     # Strip angle brackets so the player can't close the tag early and smuggle in instructions.
     cleaned = player_answer.replace("<", "").replace(">", "").strip()
