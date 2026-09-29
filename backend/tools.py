@@ -78,7 +78,8 @@ def check_memory(state: GameState, question: str, answer: str) -> dict[str, Any]
              top.question, top.answer)
     if duplicate:
         return {"error": (f"Too similar to a question already asked: \"{duplicate.question}\" "
-                          f"(answer: {duplicate.answer}). Write a question about a different fact.")}
+                          f"(answer: {duplicate.answer}). Write a question about a different, less obvious fact "
+                          f"whose answer is not in the already-used list.")}
     return None
 
 
@@ -108,6 +109,7 @@ def generate_question(state: GameState, question: str, answer: str, intro: str =
     if (error := check_memory(state, question, answer)) is not None:
         return error
     state.asked_questions.append(key)
+    state.used_answers.append(answer.strip())
     remember(state, question, answer)
     state.question_number += 1
     state.round_question += 1

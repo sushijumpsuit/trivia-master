@@ -165,3 +165,39 @@ def test_model_rewrites_a_question_rejected_as_a_repeat(fake_memory):
     assert agent.start_game(llm, g) == "Hi!"
     assert g.current_question == "Who plays Claire Dunphy?" and g.question_number == 1
     assert "Too similar" in [m.content for m in g.history if m.role == "tool"][0]
+
+
+# ---------- Bug 11: tell the model which answers are used up ----------
+
+def test_round_start_prompt_lists_answers_used_in_earlier_games(fake_memory):
+    for q_, a_ in [("Jay's dog?", "Stella"), ("Who plays Phil?", "Ty Burrell")]:
+        fake_memory.add(q_, a_, "modern family", "old-game")
+    llm = FakeLLM([reply("", q(intro="Hi", question="Cam's home state?", answer="Missouri"))])
+    agent.start_game(llm, GameState(topics=["Modern Family"]))
+    assert "Already-used answers on this topic (don't reuse): Stella, Ty Burrell" in llm.calls[0]["system"]
+
+
+def test_answers_accepted_during_the_round_join_the_list():
+    g = started()
+    llm = FakeLLM([reply("", score(), q("n", question="Largest state?", answer="Sarawak"))])
+    agent.answer(llm, g, "KL")
+    assert g.used_answers[-2:] == ["KL", "Sarawak"]
+
+
+def test_used_answers_are_reloaded_for_each_new_round(fake_memory):
+    g = started(topics=("A", "B"), per_round=3)
+    for i in range(3):
+        step = [score()] + ([q(f"n{i}", question=f"q{i + 2}", answer=f"x{i}")] if i < 2 else [])
+        agent.answer(FakeLLM([reply("", *step)]), g, "x")
+    fake_memory.add("B fact?", "B-answer", "b", "old-game")
+    llm = FakeLLM([reply("", q("r2", question="B question?", answer="b", intro="Round 2!"))])
+    agent.next_round(llm, g)
+    assert "B-answer" in llm.calls[0]["system"]
+
+
+def test_broken_memory_still_starts_the_game():
+    import memory
+    memory.set_memory(FakeMemory(fail=True))
+    llm = FakeLLM([reply("", q(intro="Hi"))])
+    assert agent.start_game(llm, GameState(topics=["t"])) == "Hi"
+    assert "none yet" in llm.calls[0]["system"]

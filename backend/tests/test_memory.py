@@ -93,3 +93,14 @@ def test_find_duplicate_looks_past_a_closer_non_repeat():
                memory.Match("Gloria's son from first marriage?", "Manny", "t", 0.30)]
     assert memory.find_duplicate(matches, "Manny").answer == "Manny"
     assert memory.find_duplicate(matches, "Luke") is None
+
+
+def test_related_answers_are_deduplicated_and_limited():
+    m = new_memory()
+    for i, (q_, a_) in enumerate([("dog name", "Stella"), ("dog breed", "French bulldog"), ("dog name again", "Stella"),
+                                  ("actor for Phil", "Ty Burrell")]):
+        m.add(q_, a_, "modern family", f"g{i}")
+    got = m.related_answers("modern family dog", limit=10)
+    assert sorted(got) == ["French bulldog", "Stella", "Ty Burrell"]
+    assert len(m.related_answers("anything", limit=2)) <= 2
+    assert new_memory().related_answers("empty") == []

@@ -11,6 +11,7 @@ import json
 import logging
 import re
 
+import memory
 from game_state import GameState
 from llm import LLM, LLMError, Message
 from tools import TOOL_SPECS, run_tool
@@ -26,6 +27,7 @@ Round {round} of {total_rounds}. This round's topic: {topic}
 Question {round_question} of {questions_per_round} in this round.
 Score: {score} | Streak: {streak}
 {open_question}
+{used_answers}
 
 Rules:
 - Write each question yourself and register it with the generate_question tool. The game shows it to the
@@ -37,6 +39,8 @@ Rules:
   question, unless this was the last question of the round. You can call both in one reply.
 - The reaction is 1-2 short sentences, plain text: say whether they were right, and give the correct
   answer if they missed it.
+- Never ask a question whose answer is in the already-used list: those facts were asked in earlier games.
+  If the famous facts are used up, pick less obvious ones you are still sure of.
 - Only ask about well-known facts you are sure of, with one clear answer. The answer must be short:
   a name, number or at most 8 words. The question field is only the question: no greeting, no "Next up".
 - Never reveal the answer to a question the player hasn't answered yet.
@@ -74,6 +78,29 @@ def clean_reply(text: str, state: GameState, intro: bool = False) -> str:
     return "Correct, nice one!" if r["correct"] else f"Not quite. The answer was {r['answer']}."
 
 
+MAX_USED_ANSWERS = 60  # enough to steer the model; each answer is only a few tokens
+
+
+def _used_answers_line(state: GameState) -> str:
+    if not state.used_answers:
+        return "Already-used answers on this topic: none yet."
+    return "Already-used answers on this topic (don't reuse): " + ", ".join(state.used_answers[-MAX_USED_ANSWERS:])
+
+
+def load_used_answers(state: GameState) -> None:
+    """At the start of a round, fetch answers already used for this topic in earlier games.
+
+    Without this the model only learned about past questions one rejection at a time and kept
+    offering the most famous facts, hitting the step cap on well-played topics (DEVLOG bug 11).
+    """
+    try:
+        past = memory.get_memory().related_answers(state.topic, MAX_USED_ANSWERS)
+    except Exception as e:  # memory is optional; the duplicate check still protects the game
+        log.warning("[game %s] could not load used answers: %s", state.id[:6], e)
+        past = []
+    state.used_answers = list(dict.fromkeys(past + state.used_answers))
+
+
 class AgentError(Exception):
     """The agent couldn't finish the turn (step cap hit or LLM kept failing)."""
 
@@ -91,7 +118,8 @@ def _system_prompt(state: GameState) -> str:
     return SYSTEM_PROMPT.format(round=state.round_index + 1, total_rounds=state.total_rounds, topic=state.topic,
                                 round_question=max(state.round_question, 1),
                                 questions_per_round=state.questions_per_round, score=state.score,
-                                streak=state.streak, open_question=open_question)
+                                streak=state.streak, open_question=open_question,
+                                used_answers=_used_answers_line(state))
 
 
 def _answer_turn_done(state: GameState, start_scored: int, start_question: int) -> bool:
@@ -159,6 +187,7 @@ class RoundError(Exception):
 
 
 def start_game(llm: LLM, state: GameState) -> str:
+    load_used_answers(state)
     return run_turn(llm, state, _round_start_message(state), answering=False)
 
 
@@ -168,6 +197,7 @@ def next_round(llm: LLM, state: GameState) -> str:
     state.round_index += 1
     state.round_question = 0
     state.history = []  # a fresh conversation per round keeps every call small; memory prevents repeats
+    load_used_answers(state)
     return run_turn(llm, state, _round_start_message(state), answering=False)
 
 

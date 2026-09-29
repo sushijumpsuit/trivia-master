@@ -44,6 +44,11 @@ class FakeMemory:
             raise RuntimeError("chroma is down")
         self.items.append({"question": question, "answer": answer, "topic": topic, "game_id": game_id})
 
+    def related_answers(self, topic, limit=60):
+        if self.fail:
+            raise RuntimeError("chroma is down")
+        return list(dict.fromkeys(it["answer"] for it in self.items))[:limit]
+
     def count(self):
         return len(self.items)
 
