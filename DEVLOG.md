@@ -95,3 +95,10 @@
  - what went wrong: three problems stacked up. (1) The empty reply was saved into the conversation, which made every later request invalid. (2) The token budget (1024) was too small for thinking mode, which is likely why the reply was empty: the reasoning used it all. (3) The failed turn had already scored my answer, so the game was left half-changed: no open question and no next question. The retry then hit 409.
  - how to fix: (1) An empty reply is never stored. It counts as a failed attempt, and the model gets a nudge. The adapters also skip empty assistant messages, so an invalid message can never be sent. (2) Raised the token budget to 4096; you only pay for tokens actually used. (3) Turns are now all-or-nothing: the game state is copied at the start of each turn (start, answer, next round) and restored if the turn fails, so a retry is a clean fresh attempt. Nothing needs undoing in the memory, because a question is only saved when it's registered, and that ends the turn. Tests replay the exact sequence from the log.
  - lesson: when a request can fail halfway, make it atomic (all-or-nothing) so the user can safely retry.
+
+
+## Bug 13: duplicate check rejected two new facts (false alarms)
+ - scenario: in the 100-question eval run, the memory rejected two questions that were not repeats. "Which two countries are separated by the Bering Strait?" (Russia and the United States) was blocked by "Which is the largest country by land area?" (Russia), distance 0.489. "Which country's space agency is ISRO?" (India) was blocked by the Chandrayaan-3 question (India), distance 0.484.
+ - what went wrong: the same-answer cutoff was 0.5. Both pairs share an answer and sit just under it, but ask about different facts.
+ - how to fix: lowered the cutoff to 0.46. The loosest real repeat seen so far is 0.441, so 0.46 still catches every known repeat and lets both false alarms through. Added both pairs to tune_threshold.py and to the tests.
+ - lesson: a threshold is only as good as the data behind it. Keep every false alarm and every miss as a test case.

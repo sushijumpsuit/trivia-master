@@ -83,6 +83,8 @@ def test_answers_match_loosely(a, b, expected):
     (0.304, "Kuala Lumpur", "Bangkok", False),         # capital of Malaysia vs Thailand
     (0.030, "Ty Burrell", "Ty Burel", True),           # near-identical question, answer typo
     (0.620, "Frank", "Frank", False),                  # same answer but a clearly different question
+    (0.489, "Russia", "Russia and the United States", False),  # Bering Strait vs largest country (eval false alarm)
+    (0.484, "India", "India", False),                  # ISRO vs Chandrayaan-3 (eval false alarm)
 ])
 def test_hybrid_rule_on_real_distances(distance, stored, new, expected):
     assert memory.is_duplicate(memory.Match("q", stored, "t", distance), new) is expected

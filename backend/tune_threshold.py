@@ -58,6 +58,11 @@ DIFFERENT = [  # different facts: should NOT be rejected
      "What is the name of the device that lets you summon a Meeseeks?", "Meeseeks Box"),
     ("What is the name of the interdimensional cable network Morty and Summer watch?", "Interdimensional Cable",
      "What is the name of the alien species that serves as soldiers of the Galactic Federation?", "Gromflomites"),
+    # false alarms from the 100-question eval run (same or overlapping answer, different fact)
+    ("Which is the largest country in the world by land area?", "Russia",
+     "Which two countries are separated by the Bering Strait?", "Russia and the United States"),
+    ("Which country's space program landed the Chandrayaan-3 spacecraft near the Moon's south pole in 2023?", "India",
+     "Which country's national space agency is known by the acronym ISRO?", "India"),
 ]
 
 

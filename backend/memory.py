@@ -28,7 +28,8 @@ COLLECTION = "questions"
 INCLUDE_ANSWER = True
 
 # Cosine distance: 0 = same meaning, bigger = less similar. Picked with tune_threshold.py on real pairs.
-DEFAULT_SAME_ANSWER_DISTANCE = 0.5   # same answer and this close = repeat (catches loose rewordings)
+DEFAULT_SAME_ANSWER_DISTANCE = 0.46  # same answer and this close = repeat. Loosest real repeat seen: 0.441;
+                                     # closest false alarms (Bering Strait, ISRO): 0.484 and 0.489
 DEFAULT_ANY_ANSWER_DISTANCE = 0.05   # different answer = repeat only if the question is nearly identical
 NEIGHBOURS = 5                       # how many nearest past questions to check
 
