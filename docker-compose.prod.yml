@@ -1,0 +1,43 @@
+# Production backend on the EC2 server: FastAPI behind Caddy (HTTPS).
+# The frontend is hosted on AWS Amplify, so it is not part of this file.
+#
+#   1. backend/.env   -> LLM keys, FRONTEND_ORIGINS=https://<your-amplify-url>, demo limits
+#   2. .env (here)    -> DOMAIN=<your-subdomain>.duckdns.org
+#   3. docker compose -f docker-compose.prod.yml up -d --build
+services:
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      CHROMA_PATH: /app/chroma_data
+    # Only Caddy can reach the backend, so trust its X-Forwarded-For header for the visitor's IP (rate limits).
+    command: ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000",
+              "--proxy-headers", "--forwarded-allow-ips", "*"]
+    expose:
+      - "8000"                        # inside the Docker network only, not on the internet
+    volumes:
+      - chroma_data:/app/chroma_data
+      - logs:/app/logs                # read with: docker compose -f docker-compose.prod.yml logs backend
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    environment:
+      DOMAIN: ${DOMAIN:?Set DOMAIN in .env, e.g. DOMAIN=trivia-master.duckdns.org}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data              # HTTPS certificates
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  chroma_data:
+  logs:
+  caddy_data:
+  caddy_config:
