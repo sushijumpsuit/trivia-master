@@ -12,14 +12,8 @@ pyvenv.cfg
 # pip: package installer for Python
 pip-selfcheck.json
 
-# Custom python interpreter
 .Python
-[Bb]in
-[Ii]nclude
-[Ll]ib
-[Ll]ib64
-[Ll]ocal
-[Ss]cripts
+# (Removed the broad lib/bin/include/scripts rules: they also ignored frontend/lib. venv/ covers the virtualenv.)
 
 # dependencies
 /node_modules
