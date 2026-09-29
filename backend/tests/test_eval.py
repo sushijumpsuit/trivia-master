@@ -6,6 +6,8 @@ import re
 import eval_game
 from llm import LLM, LLMReply, ToolCall
 
+eval_game.VERBOSE = False
+
 WORDS = ["Colombia Station", "Neptune Harbour", "Jupiter Valley", "Everest Bridge", "Sahara Garden",
          "Amazon Tower", "Portugal Square", "Argentina Road", "Mercury Castle", "Kilimanjaro Park"]
 
@@ -91,3 +93,13 @@ def test_rejections_in_a_failed_turn_are_still_counted():
     report = eval_game.play_game(eval_game.CountingLLM(Repeater()), ["Space"], 3, 1.0, 0.0, random.Random(1))
     failed = [t for t in report.turns if t.error]
     assert failed and failed[0].other_tool_errors >= 5  # the in-game exact-repeat check kept rejecting
+
+
+
+def test_game_limits_match_the_real_game(monkeypatch, capsys):
+    import pytest
+    for bad in (["--questions", "200"], ["--rounds", "6"], ["--questions", "2"]):
+        monkeypatch.setattr("sys.argv", ["eval_game.py", *bad])
+        with pytest.raises(SystemExit):
+            eval_game.main()
+    assert "questions 3-20" in capsys.readouterr().err

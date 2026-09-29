@@ -136,6 +136,7 @@ class ToolErrorCounter(logging.Handler):
             self.other += 1
 
 
+VERBOSE = True  # progress line per turn (tests switch it off)
 _counter = ToolErrorCounter()
 for _name in ("trivia.tools", "trivia.agent"):
     logging.getLogger(_name).addHandler(_counter)
@@ -151,8 +152,14 @@ def _turn(llm: CountingLLM, state: GameState, kind: str, report: GameReport, fn,
     except Exception as e:  # record and stop this game; the turn was rolled back
         error = f"{type(e).__name__}: {e}"
     dup, other = _counter.duplicates - dup0, _counter.other - other0
-    report.turns.append(TurnStat(kind, state.round_index + 1, llm.calls - calls, llm.input_tokens - tin,
-                                 llm.output_tokens - tout, round(time.perf_counter() - t0, 2), dup, other, error))
+    stat = TurnStat(kind, state.round_index + 1, llm.calls - calls, llm.input_tokens - tin,
+                    llm.output_tokens - tout, round(time.perf_counter() - t0, 2), dup, other, error)
+    report.turns.append(stat)
+    if VERBOSE:
+        where = f"R{stat.round} Q{state.round_question}/{state.questions_per_round}"
+        extra = f", {dup} repeat(s) rejected" if dup else ""
+        status = f"ERROR {error}" if error else f"{stat.calls} call(s), {stat.seconds}s{extra}"
+        print(f"    {where:>11} {kind:<10} {status}", flush=True)
     if error is None and state.awaiting_answer and state.current_question:
         if not report.accepted or report.accepted[-1]["question"] != state.current_question:
             report.accepted.append({"round": state.round_index + 1, "topic": state.topic,
@@ -161,9 +168,10 @@ def _turn(llm: CountingLLM, state: GameState, kind: str, report: GameReport, fn,
 
 
 def play_game(llm: CountingLLM, topics: list[str], questions: int, accuracy: float, typo_rate: float,
-              rng: random.Random) -> GameReport:
+              rng: random.Random, report: GameReport | None = None) -> GameReport:
+    """Play one game. Pass `report` to fill an existing one (so Ctrl+C keeps partial results)."""
     state = GameState(topics=topics, questions_per_round=questions)
-    report = GameReport(topics=topics)
+    report = report or GameReport(topics=topics)
     if not _turn(llm, state, "start", report, agent.start_game):
         return report
     while True:
@@ -259,6 +267,10 @@ def main() -> None:
     ap.add_argument("--price-in", type=float, help="USD per 1M input tokens (overrides the table)")
     ap.add_argument("--price-out", type=float, help="USD per 1M output tokens (overrides the table)")
     args = ap.parse_args()
+    # Same limits as the game's API: more questions per round means an ever-longer conversation
+    # (slower, pricier calls) and running out of facts on the topic.
+    if not 1 <= args.rounds <= 5 or not 3 <= args.questions <= 20 or not 1 <= args.games <= 20:
+        ap.error("use --rounds 1-5, --questions 3-20 (per round) and --games 1-20, like the real game")
 
     provider, _, model, _ = provider_settings()
     price_in, price_out = PRICES.get(provider, (0.0, 0.0))
@@ -271,22 +283,36 @@ def main() -> None:
     tmp = tempfile.TemporaryDirectory(ignore_cleanup_errors=True) if args.memory == "fresh" else None  # Windows may lock files
     if tmp:
         memory.set_memory(memory.QuestionMemory(path=tmp.name))
+    os.makedirs("logs", exist_ok=True)
+    stamp = f"{datetime.now():%Y%m%d-%H%M%S}"
+    log_file = logging.FileHandler(f"logs/eval-{stamp}.log", encoding="utf-8")
+    log_file.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s", "%H:%M:%S"))
+    for name in ("trivia.agent", "trivia.tools", "trivia.memory"):
+        logging.getLogger(name).addHandler(log_file)
+        logging.getLogger(name).setLevel(logging.INFO)
+
     rng = random.Random(args.seed)
     llm = CountingLLM(get_llm())
-    reports = []
-    for g in range(args.games):
-        reports.append(play_game(llm, expand_topics(args.topics, args.rounds), args.questions,
-                                 args.accuracy, args.typo_rate, rng))
-        print(f"  game {g + 1}: {len(reports[-1].accepted)} questions, {'finished' if reports[-1].finished else 'stopped early'}")
+    reports: list[GameReport] = []
+    interrupted = False
+    try:
+        for g in range(args.games):
+            print(f"  game {g + 1}:", flush=True)
+            report = GameReport(topics=expand_topics(args.topics, args.rounds))
+            reports.append(report)
+            play_game(llm, report.topics, args.questions, args.accuracy, args.typo_rate, rng, report)
+            print(f"  game {g + 1}: {len(report.accepted)} questions, {'finished' if report.finished else 'stopped early'}")
+    except KeyboardInterrupt:
+        interrupted = True
+        print("\nInterrupted: saving what was measured so far...")
 
-    summary = summarize(reports, price_in, price_out)
+    summary = summarize(reports, price_in, price_out) | {"interrupted": interrupted}
     print_summary(summary, provider, model)
-    os.makedirs("logs", exist_ok=True)
-    path = f"logs/eval-{datetime.now():%Y%m%d-%H%M%S}.json"
+    path = f"logs/eval-{stamp}.json"
     with open(path, "w", encoding="utf-8") as f:
         json.dump({"settings": vars(args) | {"provider": provider, "model": model},
                    "summary": summary, "games": [asdict(r) for r in reports]}, f, indent=2, ensure_ascii=False)
-    print(f"\nFull report: {path}")
+    print(f"\nFull report: {path}\nAgent log:   logs/eval-{stamp}.log")
     if tmp:
         memory.set_memory(None)
         tmp.cleanup()
