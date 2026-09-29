@@ -237,3 +237,34 @@ def test_failed_next_round_rolls_back_to_the_round_break():
         agent.next_round(FakeLLM([LLMError("a"), LLMError("b")]), g)
     assert g.round_index == 0 and g.round_over  # still at the break; "Start round 2" can be pressed again
     assert agent.next_round(FakeLLM([reply("", q("r2", question="B?", answer="b", intro="Round 2!"))]), g) == "Round 2!"
+
+
+
+# ---------- history trimming ----------
+
+def test_only_the_last_two_turns_are_sent():
+    g = started(per_round=10)
+    for i in range(4):
+        agent.answer(FakeLLM([reply("", score(reaction=f"r{i}"), q(f"n{i}", question=f"q{i + 2}", answer=f"a{i}"))]), g, f"ans{i}")
+    llm = FakeLLM([reply("", score(), q("n9", question="q9", answer="a9"))])
+    agent.answer(llm, g, "last")
+    sent = llm.calls[0]["messages"]
+    assert sent[0].content == "<player_answer>ans3</player_answer>"      # previous turn starts the window
+    assert sent[-1].content == "<player_answer>last</player_answer>"
+    assert len(g.history) > len(sent)                                    # full history is still kept
+    ids_called = {c.id for m in sent if m.role == "assistant" for c in m.tool_calls}
+    ids_answered = {m.tool_call_id for m in sent if m.role == "tool"}
+    assert ids_answered <= ids_called                                    # no tool result without its call
+
+
+def test_short_history_is_sent_whole():
+    history = [agent.Message("user", "Start round 1 of 1. Topic: t."), agent.Message("assistant", "hi")]
+    assert agent.recent_turns(history) == history
+
+
+def test_nudges_are_not_treated_as_turn_starts():
+    M = agent.Message
+    history = [M("user", "<player_answer>a</player_answer>"), M("assistant", "x"),
+               M("user", "<player_answer>b</player_answer>"), M("assistant", "y"),
+               M("user", "(Game engine) The turn isn't finished: call update_score with your reaction.")]
+    assert agent.recent_turns(history, keep=1)[0].content == "<player_answer>b</player_answer>"

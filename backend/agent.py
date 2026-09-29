@@ -21,6 +21,7 @@ from tools import TOOL_SPECS, run_tool
 log = logging.getLogger("trivia.agent")
 
 MAX_STEPS = 8
+KEEP_TURNS = 2  # turns of conversation sent to the model; the system prompt carries everything else
 MAX_TOKENS = 4096  # thinking models spend tokens on reasoning first; 1024 sometimes left nothing for the reply
 
 SYSTEM_PROMPT = """You are an upbeat, witty trivia host running a one-on-one quiz in rounds.
@@ -124,6 +125,24 @@ def _system_prompt(state: GameState) -> str:
                                 used_answers=_used_answers_line(state))
 
 
+def _is_turn_start(m: Message) -> bool:
+    return m.role == "user" and (m.content.startswith("<player_answer>") or m.content.startswith("Start round"))
+
+
+def recent_turns(history: list[Message], keep: int = KEEP_TURNS) -> list[Message]:
+    """The last `keep` turns of the conversation, cut only where a turn starts.
+
+    Old turns aren't needed: the open question, its answer, the score, the round and the used answers
+    are all in the system prompt. Cutting only at a turn start keeps every tool call next to its result,
+    which providers require. Without this, input grew by ~330 tokens per answer (~7,600 per call by
+    question 20).
+    """
+    starts = [i for i, m in enumerate(history) if _is_turn_start(m)]
+    if len(starts) <= keep:
+        return history
+    return history[starts[-keep]:]
+
+
 def _answer_turn_done(state: GameState, start_scored: int, start_question: int) -> bool:
     """An answer turn is done once the answer is scored and either the round ended or the next
     question is registered."""
@@ -150,7 +169,7 @@ def run_turn(llm: LLM, state: GameState, user_text: str, answering: bool) -> str
 
     for _ in range(MAX_STEPS):
         try:
-            reply = llm.chat(_system_prompt(state), state.history, TOOL_SPECS, MAX_TOKENS)
+            reply = llm.chat(_system_prompt(state), recent_turns(state.history), TOOL_SPECS, MAX_TOKENS)
         except LLMError:
             llm_failures += 1
             if llm_failures >= 2:
