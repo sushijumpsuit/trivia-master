@@ -52,3 +52,17 @@
    3. Add an `explanation` field to `generate_question`, filled in before the answer, so the model has to justify the answer and catches its own contradictions.
    4. Use Claude for the live demo (stronger general knowledge).
    Result (same topic, one game each): thinking off had about 5 wrong or made-up questions out of 9; thinking on had 0 out of 11 that I could find. Model time per turn went from about 1s to 2-3s, still 1 model call per turn. The questions also became more mainstream, which is probably part of why they were accurate. Made thinking the default for DeepSeek. Options 2-4 stay as backups. Next time, log token usage so cost can be compared with numbers too.
+
+8. Duplicate check: embedding distance alone can't separate repeats from new questions
+ - e.g. (tune_threshold.py on 20 real pairs from game logs, all-MiniLM-L6-v2, cosine distance):
+   - Question only: best cutoff (about 0.20) catches 7/10 repeats and wrongly rejects 1/10.
+   - Question + answer: best cutoff (about 0.30) catches 8/10 repeats and wrongly rejects 1/10. Better, but still overlaps.
+   - False alarm: "Gloria's son from her first marriage?" (Manny) vs "Manny's biological father, Gloria's first husband?" (Javier) at 0.107. Different facts, but almost the same words, and "Manny" is in both texts.
+   - Missed repeats: "patriarch, father of Claire and Mitchell" vs "grumpy patriarch played by Ed O'Neill" (0.441), and "city where Modern Family is set" vs "city where the families live" (0.433). Different clues, same answer.
+ - what went wrong: no single cutoff catches every reworded repeat without also rejecting some new questions.
+ - why: embeddings measure how similar the wording and topic are, not whether two questions ask for the same fact. Questions that share a template look close even when the answers differ, and loose rewordings look far apart even when the answer is the same.
+ - the pattern: in this data, every real repeat had the same answer, and every false alarm had a different answer.
+ - how to fix: a hybrid rule that combines distance with an answer check, looking at the 5 nearest past questions:
+   - same answer (compared loosely: lowercase, no punctuation, "Jay" counts as "Jay Pritchett") and distance under 0.5 = repeat
+   - different answer = repeat only if the question is nearly identical (distance under 0.05)
+   On the 20 pairs this catches 10/10 repeats with 0/10 false alarms. 20 pairs is a small set, so confirm it in the 2-game acceptance test (every check's distance is logged) and add new pairs to tune_threshold.py whenever it gets one wrong.
