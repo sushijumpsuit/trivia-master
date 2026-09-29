@@ -149,7 +149,6 @@ export default function Home() {
             <Stat label="Streak" value={game.streak} />
             <Stat label="Best streak" value={game.best_streak} />
             <Stat label="Question" value={game.question_number} />
-            <Stat label="Difficulty" value={game.difficulty} />
           </aside>
         </div>
       )}

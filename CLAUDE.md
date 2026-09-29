@@ -4,7 +4,7 @@ Read this before making any change. Frontend-specific rules also live in `fronte
 
 ## What this project is
 
-An AI-hosted trivia game. The player picks any topic; an LLM agent runs the round by calling real tools: `generate_question` (registers the question and the host's reaction, and from Phase 2 runs the ChromaDB duplicate check itself) and `update_score`, plus `adjust_difficulty` in Phase 3. There is no `check_answer` tool: the server puts the open question's correct answer in the system prompt. ChromaDB stores every question ever asked so the agent never repeats itself, even with reworded questions.
+An AI-hosted trivia game. The player picks any topic; an LLM agent runs the round by calling real tools: `generate_question` (registers the question and the host's reaction, and from Phase 2 runs the ChromaDB duplicate check itself) and `update_score`. There is no difficulty setting (removed as unused; the host can still ease off in its reaction). There is no `check_answer` tool: the server puts the open question's correct answer in the system prompt. ChromaDB stores every question ever asked so the agent never repeats itself, even with reworded questions.
 
 Rules that must always hold live in code (tool checks), not only in the prompt: logs showed models don't follow prompt rules reliably.
 
@@ -36,7 +36,7 @@ backend/
     __init__.py      get_llm() factory that reads LLM_PROVIDER
   tools.py           tool JSON schemas + the Python functions that run them
   memory.py          all ChromaDB code (store, similarity search)
-  game_state.py      score / streak / difficulty per game
+  game_state.py      score / streak per game
   sanity_check.py    Phase 0 check that the configured LLM and Chroma work
   tests/             pytest tests
 frontend/app/        Next.js pages and components
@@ -77,7 +77,7 @@ Keep these responsibilities separate. Routes should not contain agent logic; the
 0. Setup: venv, packages, sanity check, first commit (done 26 Sep 2026, on Groq)
 1. Core game loop without memory: `llm/base.py` interface + first adapter (Groq or Gemini, free), neutral tool schemas, agent loop, `/game/start` and `/game/{id}/answer`, minimal UI; then add the Anthropic adapter (done 29 Sep 2026)
 2. ChromaDB memory: duplicate check inside `generate_question` (memory.py) using a hybrid rule (embedding distance + answer match, cutoffs picked with tune_threshold.py, see DEVLOG bug 8); verify 20+ rounds across 2 games with no repeats (done 29 Sep 2026: 29 questions over 2 games, 7 repeats caught, 0 false rejections)
-3. **Polish: `adjust_difficulty`, host personality, summary, frontend feedback; eval script that auto-plays N rounds and reports duplicate rate + loop steps per question, per provider**
+3. **Polish: host personality, summary, frontend feedback; eval script that auto-plays N rounds and reports duplicate rate + loop steps per question, per provider**
 4. Docker + docker-compose (Chroma on a named volume)
 5. Deploy: backend on EC2 with HTTPS, frontend on Amplify; per-visitor rate limit + daily question cap so the public demo can't drain API credit
 6. README, architecture diagram, demo GIF

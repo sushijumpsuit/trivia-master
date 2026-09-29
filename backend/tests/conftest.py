@@ -39,7 +39,7 @@ class FakeMemory:
         return [memory.Match(question=it["question"], answer=it["answer"], topic=it["topic"],
                              distance=self._distance(question, it["question"])) for it in ranked]
 
-    def add(self, question, answer, topic, difficulty, game_id):
+    def add(self, question, answer, topic, game_id):
         if self.fail:
             raise RuntimeError("chroma is down")
         self.items.append({"question": question, "answer": answer, "topic": topic, "game_id": game_id})

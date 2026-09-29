@@ -8,11 +8,9 @@ from conftest import FakeLLM, reply, tool
 @pytest.fixture
 def client(monkeypatch):
     llm = FakeLLM([
-        reply("", tool("generate_question", reaction="Hi!", question="Capital of Malaysia?", answer="Kuala Lumpur",
-                       difficulty="easy")),
+        reply("", tool("generate_question", reaction="Hi!", question="Capital of Malaysia?", answer="Kuala Lumpur")),
         reply("", tool("update_score", "b", correct=True)),
-        reply("", tool("generate_question", "c", reaction="Yes!", question="Largest state?", answer="Sarawak",
-                       difficulty="medium")),
+        reply("", tool("generate_question", "c", reaction="Yes!", question="Largest state?", answer="Sarawak")),
     ])
     monkeypatch.setattr(main, "get_llm", lambda: llm)
     return TestClient(main.app)

@@ -20,7 +20,7 @@ def test_empty_memory_has_no_match():
 
 def test_reworded_question_is_closer_than_unrelated_one():
     m = new_memory()
-    m.add("What is the capital of Malaysia?", "Kuala Lumpur", "Geography", "easy", "g1")
+    m.add("What is the capital of Malaysia?", "Kuala Lumpur", "Geography", "g1")
     close = m.nearest("Which city is the capital of Malaysia?", "Kuala Lumpur")[0]
     far = m.nearest("Who painted the Mona Lisa?", "Leonardo da Vinci")[0]
     assert close.question == "What is the capital of Malaysia?" and close.topic == "geography"
@@ -29,13 +29,13 @@ def test_reworded_question_is_closer_than_unrelated_one():
 
 def test_exact_repeat_has_distance_near_zero():
     m = new_memory()
-    m.add("Who plays Phil Dunphy?", "Ty Burrell", "Modern Family", "easy", "g1")
+    m.add("Who plays Phil Dunphy?", "Ty Burrell", "Modern Family", "g1")
     assert m.nearest("Who plays Phil Dunphy?", "Ty Burrell")[0].distance < 0.01
 
 
 def test_memory_survives_a_restart(tmp_path):
     name = f"test-{uuid.uuid4().hex}"
-    new_memory(str(tmp_path), name).add("q one", "a", "t", "easy", "g")
+    new_memory(str(tmp_path), name).add("q one", "a", "t", "g")
     assert new_memory(str(tmp_path), name).count() == 1
 
 
@@ -58,7 +58,7 @@ def test_nearest_returns_up_to_k_closest_first():
     m = new_memory()
     for i, q in enumerate(["capital of malaysia", "capital of thailand", "largest ocean", "tallest mountain",
                            "fastest animal", "smallest planet"]):
-        m.add(q, f"a{i}", "t", "easy", "g")
+        m.add(q, f"a{i}", "t", "g")
     got = m.nearest("capital of malaysia", "a0")
     assert len(got) == memory.NEIGHBOURS and got[0].question == "capital of malaysia"
     assert [x.distance for x in got] == sorted(x.distance for x in got)

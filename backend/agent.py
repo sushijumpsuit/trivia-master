@@ -23,7 +23,6 @@ MAX_TOKENS = 1024
 SYSTEM_PROMPT = """You are an upbeat, witty trivia host running a one-on-one quiz.
 
 Topic: {topic}
-Current difficulty: {difficulty}
 Score: {score} | Streak: {streak} | Questions asked: {question_number}
 {open_question}
 
@@ -85,7 +84,7 @@ def _system_prompt(state: GameState) -> str:
                          f"Correct answer (hidden from the player): {state.current_answer}")
     else:
         open_question = "Open question: none yet."
-    return SYSTEM_PROMPT.format(topic=state.topic, difficulty=state.difficulty, score=state.score,
+    return SYSTEM_PROMPT.format(topic=state.topic, score=state.score,
                                 streak=state.streak, question_number=state.question_number,
                                 open_question=open_question)
 

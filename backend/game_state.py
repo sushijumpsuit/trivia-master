@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 
 from llm import Message
 
-DIFFICULTIES = ("easy", "medium", "hard")
 
 
 @dataclass
@@ -17,7 +16,6 @@ class GameState:
     streak: int = 0
     best_streak: int = 0
     question_number: int = 0
-    difficulty: str = "medium"
     current_question: str | None = None
     current_answer: str | None = None   # never sent to the frontend while the question is open
     awaiting_answer: bool = False        # True between generate_question and update_score
@@ -31,7 +29,7 @@ class GameState:
         """What the frontend is allowed to see (no hidden answer)."""
         return {"game_id": self.id, "topic": self.topic, "score": self.score, "streak": self.streak,
                 "best_streak": self.best_streak, "question_number": self.question_number,
-                "difficulty": self.difficulty, "current_question": self.current_question,
+                "current_question": self.current_question,
                 "last_result": self.last_result}
 
 

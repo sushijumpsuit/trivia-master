@@ -10,7 +10,7 @@ import re
 from typing import Any, Callable
 
 import memory
-from game_state import DIFFICULTIES, GameState
+from game_state import GameState
 from llm import ToolSpec
 
 log = logging.getLogger("trivia.tools")
@@ -29,8 +29,7 @@ TOOL_SPECS: list[ToolSpec] = [
                 "answer if they missed it. Never include the new question or its answer.")},
             "question": {"type": "string", "description": "The question text shown to the player."},
             "answer": {"type": "string", "description": "The correct answer: a name, number or at most 8 words."},
-            "difficulty": {"type": "string", "enum": list(DIFFICULTIES)},
-        }, "required": ["reaction", "question", "answer", "difficulty"]},
+        }, "required": ["reaction", "question", "answer"]},
     ),
     ToolSpec(
         name="update_score",
@@ -80,19 +79,19 @@ def check_memory(state: GameState, question: str, answer: str) -> dict[str, Any]
     return None
 
 
-def remember(state: GameState, question: str, answer: str, difficulty: str) -> None:
+def remember(state: GameState, question: str, answer: str) -> None:
     try:
-        memory.get_memory().add(question, answer, state.topic, difficulty, state.id)
+        memory.get_memory().add(question, answer, state.topic, state.id)
     except Exception as e:
         log.warning("[game %s] could not save question to memory: %s", state.id[:6], e)
 
 
-def generate_question(state: GameState, question: str, answer: str, difficulty: str,
-                      reaction: str = "") -> dict[str, Any]:
+def generate_question(state: GameState, question: str, answer: str, reaction: str = "",
+                      **_ignored: Any) -> dict[str, Any]:
+    # **_ignored: some models add fields we don't use (e.g. an old "difficulty"); ignore them
+    # instead of failing the call.
     if state.awaiting_answer:
         return {"error": "The current question hasn't been scored yet. Call update_score first."}
-    if difficulty not in DIFFICULTIES:
-        return {"error": f"difficulty must be one of {DIFFICULTIES}"}
     if not question.strip() or not answer.strip():
         return {"error": "question and answer must not be empty"}
     if len(answer.split()) > MAX_ANSWER_WORDS or len(answer) > MAX_ANSWER_CHARS:
@@ -104,10 +103,10 @@ def generate_question(state: GameState, question: str, answer: str, difficulty: 
     if (error := check_memory(state, question, answer)) is not None:
         return error
     state.asked_questions.append(key)
-    remember(state, question, answer, difficulty)
+    remember(state, question, answer)
     state.question_number += 1
     state.current_question, state.current_answer = question.strip(), answer.strip()
-    state.difficulty, state.awaiting_answer = difficulty, True
+    state.awaiting_answer = True
     state.last_reaction = reaction.strip()
     state.player_answered = False
     return {"status": "ok", "question_number": state.question_number}

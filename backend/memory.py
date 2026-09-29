@@ -116,11 +116,10 @@ class QuestionMemory:
         return [Match(question=meta["question"], answer=meta["answer"], topic=meta["topic"], distance=float(d))
                 for meta, d in zip(res["metadatas"][0], res["distances"][0])]
 
-    def add(self, question: str, answer: str, topic: str, difficulty: str, game_id: str) -> None:
+    def add(self, question: str, answer: str, topic: str, game_id: str) -> None:
         self._col.add(ids=[uuid.uuid4().hex], documents=[to_document(question, answer)],
                       metadatas=[{"question": question.strip(), "answer": answer.strip(),
-                                  "topic": topic.strip().lower(), "difficulty": difficulty,
-                                  "game_id": game_id}])
+                                  "topic": topic.strip().lower(), "game_id": game_id}])
 
     def warm_up(self) -> None:
         """Load the embedding model now, so the first question of the day isn't slow."""
