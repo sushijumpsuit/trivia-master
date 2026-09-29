@@ -72,6 +72,7 @@ Every bug, with cause and fix, is in [DEVLOG.md](DEVLOG.md).
 **Backend:** Python 3.11, FastAPI, Pydantic
 **AI:** tool-calling LLM agent, ChromaDB with all-MiniLM-L6-v2 embeddings
 **Testing:** pytest, Playwright
+**DevOps:** Docker, Docker Compose
 
 ## Run it locally
 
@@ -92,6 +93,14 @@ cd frontend
 npm install
 npm run dev                      # http://localhost:3000
 ```
+
+Or run everything with Docker (after creating `backend/.env`):
+
+```bash
+docker compose up --build        # frontend http://localhost:3000, backend http://localhost:8000
+```
+
+The question memory lives in a Docker volume, so it survives restarts and rebuilds.
 
 From `backend/`: `pytest` (tests), `python eval_game.py --games 3` (auto-play and measure), `python tune_threshold.py` (check the duplicate rule).
 
