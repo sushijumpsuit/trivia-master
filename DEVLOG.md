@@ -37,3 +37,18 @@
  - what went wrong: a question with no clear answer can't be marked fairly. And `check_answer` did nothing: the model decided right or wrong before it saw what `check_answer` returned.
  - why: nothing limited the answer's length. `check_answer` only returned an answer the model had written itself, which was already in the conversation.
  - how to fix: `generate_question` now rejects answers longer than 8 words (or 80 characters) and asks for a question with one clear answer. Removed `check_answer`. When a question is open, the server puts it and its correct answer in the system prompt on every call (context engineering instead of a tool), so the model always judges against the stored answer. Also added prompt rules for consistent marking ("Didi" for "DeDe") and for asking only well-known facts. Tests cover the long answer, the removed tool, and the answer in the prompt.
+
+7. Wrong facts in the questions (known issue, fix in progress)
+ - e.g. (DeepSeek Flash, thinking off, Modern Family game):
+   - Q7 asked for the Dunphys' "overachieving eldest daughter" with the answer "Haley". Haley is the eldest, but Alex is the overachiever, so the question contradicts itself. The model even said so in its reaction ("Alex is the overachieving middle one") but still marked me wrong.
+   - Q4 called Andy Bailey the Dunphys' "next-door neighbor friend". He is Jay and Gloria's manny.
+   - Q9: "Which character is Cam and Mitchell's husband, played by Eric Stonestreet?" with the answer "Cam Tucker". The question makes no sense.
+   - Q5 (Pepper as "Lily's godfather") and Q6 ("The Incredible Phil" as Phil's magician name) look made up.
+ - what went wrong: some questions have wrong facts or contradict themselves, so a correct answer can be marked wrong.
+ - why: this is the model's knowledge, not a code bug. `deepseek-flash` with thinking off writes questions fast without checking its facts. The code can keep the game consistent (scoring, no repeats, short answers), but it can't make the model know the show.
+ - how to fix (in progress): compare options using the game logs, from cheapest to strongest:
+   1. Turn on DeepSeek thinking mode (`DEEPSEEK_THINKING=enabled`) so the model reasons before it writes each question. Testing now.
+   2. Use the stronger `deepseek-v4-pro` (about 4x the price, still cheap).
+   3. Add an `explanation` field to `generate_question`, filled in before the answer, so the model has to justify the answer and catches its own contradictions.
+   4. Use Claude for the live demo (stronger general knowledge).
+   Pick the fix from the numbers: wrong or contradictory questions per game, time per turn, and cost per turn.
