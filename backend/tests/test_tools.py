@@ -4,7 +4,7 @@ from tools import run_tool
 
 
 def new_game():
-    return GameState(topic="Malaysia")
+    return GameState(topics=["Malaysia"])
 
 
 def test_full_question_cycle_updates_score_and_streak():
@@ -12,9 +12,9 @@ def test_full_question_cycle_updates_score_and_streak():
     assert run_tool(g, "generate_question", {"question": "Capital?", "answer": "Kuala Lumpur"})["status"] == "ok"
     assert g.awaiting_answer and g.question_number == 1
     g.player_answered = True
-    assert run_tool(g, "update_score", {"correct": True}) == {"score": 1, "streak": 1}
+    assert run_tool(g, "update_score", {"correct": True, "reaction": "Yes!"}) == {"score": 1, "streak": 1}
     assert not g.awaiting_answer
-    assert g.last_result == {"correct": True, "answer": "Kuala Lumpur"}
+    assert g.last_result == {"correct": True, "answer": "Kuala Lumpur", "reaction": "Yes!"}
 
 
 def test_wrong_answer_resets_streak_but_keeps_best():
@@ -80,11 +80,6 @@ def test_same_question_cannot_be_asked_twice_in_a_game():
     assert run_tool(g, "generate_question", {"question": "Who is Morty's sister?", "answer": "Summer"})["status"] == "ok"
 
 
-def test_generate_question_stores_the_reaction():
-    g = new_game()
-    run_tool(g, "generate_question", {"reaction": "Welcome!", "question": "q", "answer": "a"})
-    assert g.last_reaction == "Welcome!"
-
 
 def test_long_rambling_answers_are_rejected():
     """Bug 6 regression (DeepSeek log): the stored 'answer' was a whole sentence."""
@@ -106,16 +101,16 @@ def test_reworded_repeat_from_an_earlier_game_is_rejected(fake_memory):
     old = "In which country was Gloria Delgado-Pritchett born?"
     new = "Gloria Delgado-Pritchett hails from which South American country?"
     fake_memory.similar = FakeMemory(similar=[(old, new)]).similar
-    run_tool(GameState(topic="Modern Family"), "generate_question",
+    run_tool(GameState(topics=["Modern Family"]), "generate_question",
              {"question": old, "answer": "Colombia"})
-    g = GameState(topic="modern family")  # a new game
+    g = GameState(topics=["modern family"])  # a new game
     result = run_tool(g, "generate_question", {"question": new, "answer": "Colombia"})
     assert "error" in result and old in result["error"]
     assert g.question_number == 0 and fake_memory.count() == 1  # rejected question isn't stored
 
 
 def test_accepted_questions_are_stored_with_topic_and_game(fake_memory):
-    g = GameState(topic="Malaysia")
+    g = GameState(topics=["Malaysia"])
     run_tool(g, "generate_question", {"question": "Capital?", "answer": "Kuala Lumpur"})
     assert fake_memory.items == [{"question": "Capital?", "answer": "Kuala Lumpur", "topic": "Malaysia",
                                   "game_id": g.id}]
@@ -159,3 +154,41 @@ def test_extra_fields_from_the_model_are_ignored():
     g = new_game()
     result = run_tool(g, "generate_question", {"question": "q", "answer": "a", "difficulty": "hard", "foo": 1})
     assert result["status"] == "ok" and "difficulty" not in g.public_view()
+
+
+
+# ---------- rounds ----------
+
+def test_no_extra_question_after_the_last_one_in_a_round():
+    g = GameState(topics=["A", "B"], questions_per_round=3)
+    for i in range(3):
+        assert run_tool(g, "generate_question", {"question": f"q{i}", "answer": "x"})["status"] == "ok"
+        g.player_answered = True
+        result = run_tool(g, "update_score", {"correct": True, "reaction": "Yes!"})
+    assert "round_over" in result and g.round_over and not g.finished
+    assert "error" in run_tool(g, "generate_question", {"question": "q9", "answer": "x"})
+    assert g.round_scores == [3, 0] and g.last_result["reaction"] == "Yes!"
+
+
+def test_last_round_reports_game_over():
+    g = GameState(topics=["A"], questions_per_round=3)
+    for i in range(3):
+        run_tool(g, "generate_question", {"question": f"q{i}", "answer": "x"})
+        g.player_answered = True
+        result = run_tool(g, "update_score", {"correct": i != 1, "reaction": "ok"})
+    assert "game_over" in result and g.finished and g.round_scores == [2]
+
+
+def test_intro_is_stored_and_old_reaction_field_still_works_as_intro():
+    g = GameState(topics=["A"])
+    run_tool(g, "generate_question", {"question": "q", "answer": "a", "intro": "Welcome to round 1!"})
+    assert g.last_intro == "Welcome to round 1!"
+    g2 = GameState(topics=["A"])
+    run_tool(g2, "generate_question", {"question": "q2", "answer": "a", "reaction": "Hi!"})
+    assert g2.last_intro == "Hi!"
+
+
+def test_topics_repeat_in_order():
+    from game_state import expand_topics
+    assert expand_topics(["A", "B"], 3) == ["A", "B", "A"]
+    assert expand_topics([" A ", ""], 2) == ["A", "A"]

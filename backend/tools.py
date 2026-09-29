@@ -18,25 +18,28 @@ log = logging.getLogger("trivia.tools")
 TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
         name="generate_question",
-        description=("Register the next trivia question you have written, together with your reaction to "
-                     "the player's last answer. The answer is stored on the server and hidden from the player. "
-                     "Call this exactly once per question, only after the previous question has been scored. "
-                     "This ends your turn: the game shows your reaction and then the question."),
+        description=("Register the next trivia question you have written. The answer is stored on the "
+                     "server and hidden from the player. Call this once per question, only after the previous "
+                     "question has been scored, and never after the last question of a round. "
+                     "This ends your turn."),
         parameters={"type": "object", "properties": {
-            "reaction": {"type": "string", "description": (
-                "What you say to the player before the question, 1-2 short sentences, plain text. On the "
-                "first question: a greeting. After an answer: say if they were right, and give the correct "
-                "answer if they missed it. Never include the new question or its answer.")},
-            "question": {"type": "string", "description": "The question text shown to the player."},
+            "question": {"type": "string", "description": "Only the question itself: no greeting, no 'Next up'."},
             "answer": {"type": "string", "description": "The correct answer: a name, number or at most 8 words."},
-        }, "required": ["reaction", "question", "answer"]},
+            "intro": {"type": "string", "description": (
+                "Only for the first question of a round: one short sentence welcoming the player to the "
+                "round and its topic. Leave empty otherwise.")},
+        }, "required": ["question", "answer"]},
     ),
     ToolSpec(
         name="update_score",
-        description="Record whether the player's answer to the current question was correct. Call once per question.",
+        description=("Record whether the player's answer to the current question was correct, with your "
+                     "reaction. Call once per answer. The result tells you if the round is over."),
         parameters={"type": "object", "properties": {
             "correct": {"type": "boolean"},
-        }, "required": ["correct"]},
+            "reaction": {"type": "string", "description": (
+                "1-2 short sentences, plain text: say if they were right, and give the correct answer if they "
+                "missed it. Never include the next question.")},
+        }, "required": ["correct", "reaction"]},
     ),
 ]
 
@@ -86,10 +89,12 @@ def remember(state: GameState, question: str, answer: str) -> None:
         log.warning("[game %s] could not save question to memory: %s", state.id[:6], e)
 
 
-def generate_question(state: GameState, question: str, answer: str, reaction: str = "",
+def generate_question(state: GameState, question: str, answer: str, intro: str = "",
                       **_ignored: Any) -> dict[str, Any]:
     # **_ignored: some models add fields we don't use (e.g. an old "difficulty"); ignore them
     # instead of failing the call.
+    if state.is_last_question_of_round:
+        return {"error": "This round's questions are all used. Don't register another question."}
     if state.awaiting_answer:
         return {"error": "The current question hasn't been scored yet. Call update_score first."}
     if not question.strip() or not answer.strip():
@@ -105,14 +110,15 @@ def generate_question(state: GameState, question: str, answer: str, reaction: st
     state.asked_questions.append(key)
     remember(state, question, answer)
     state.question_number += 1
+    state.round_question += 1
     state.current_question, state.current_answer = question.strip(), answer.strip()
     state.awaiting_answer = True
-    state.last_reaction = reaction.strip()
+    state.last_intro = (intro or str(_ignored.get("reaction", ""))).strip()
     state.player_answered = False
     return {"status": "ok", "question_number": state.question_number}
 
 
-def update_score(state: GameState, correct: bool) -> dict[str, Any]:
+def update_score(state: GameState, correct: bool, reaction: str = "", **_ignored: Any) -> dict[str, Any]:
     if not state.awaiting_answer:
         return {"error": "There is no open question to score (already scored?)."}
     if not state.player_answered:
@@ -120,14 +126,21 @@ def update_score(state: GameState, correct: bool) -> dict[str, Any]:
     correct = bool(correct)
     if correct:
         state.score += 1
+        state.round_scores[state.round_index] += 1
         state.streak += 1
         state.best_streak = max(state.best_streak, state.streak)
     else:
         state.streak = 0
-    state.last_result = {"correct": correct, "answer": state.current_answer}
+    state.last_result = {"correct": correct, "answer": state.current_answer, "reaction": reaction.strip()}
     state.awaiting_answer = False
     state.player_answered = False
-    return {"score": state.score, "streak": state.streak}
+    state.scored_count += 1
+    result: dict[str, Any] = {"score": state.score, "streak": state.streak}
+    if state.finished:
+        result["game_over"] = "That was the last question of the game. Stop here."
+    elif state.round_over:
+        result["round_over"] = "That was the last question of this round. Stop here; don't register a question."
+    return result
 
 
 _TOOL_FUNCS: dict[str, Callable[..., dict[str, Any]]] = {
