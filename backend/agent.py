@@ -92,7 +92,8 @@ def run_turn(llm: LLM, state: GameState, user_text: str) -> str:
                 raise
             continue  # one retry: providers occasionally return a malformed tool call
 
-        state.history.append(Message(role="assistant", content=reply.text, tool_calls=reply.tool_calls))
+        state.history.append(Message(role="assistant", content=reply.text, tool_calls=reply.tool_calls,
+                                     reasoning=reply.reasoning))
         log.info("[game %s] model text=%r tool_calls=%s", state.id[:6], reply.text[:300],
                  [(c.name, c.arguments) for c in reply.tool_calls])
 

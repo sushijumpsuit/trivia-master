@@ -88,3 +88,48 @@ def test_anthropic_round_trip_with_fake_client():
     r = AnthropicLLM("k", "claude-x", client=client).chat("sys", HISTORY, [SPEC], max_tokens=300)
     assert sent["system"] == "sys" and sent["max_tokens"] == 300
     assert r.text == "Nice!" and r.tool_calls == [ToolCall("tu1", "update_score", {"correct": True})]
+
+
+# ---------- DeepSeek (OpenAI-compatible, with optional thinking mode) ----------
+
+def capture_client(resp):
+    sent = {}
+    return sent, NS(chat=NS(completions=NS(create=lambda **kw: sent.update(kw) or resp)))
+
+
+def test_deepseek_uses_max_tokens_and_sends_thinking_setting():
+    sent, client = capture_client(openai_resp("hi"))
+    llm = OpenAICompatLLM("deepseek", "k", "deepseek-flash", client=client,
+                          extra_body={"thinking": {"type": "disabled"}})
+    llm.chat("s", [Message("user", "x")], [SPEC], max_tokens=200)
+    assert sent["max_tokens"] == 200 and "max_completion_tokens" not in sent
+    assert sent["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_reasoning_is_read_from_the_response():
+    resp = openai_resp("done")
+    resp.choices[0].message.reasoning_content = "The player said KL, which means Kuala Lumpur."
+    assert from_openai_response(resp).reasoning.startswith("The player said KL")
+
+
+def test_reasoning_is_sent_back_only_when_enabled():
+    history = [Message("user", "hi"),
+               Message("assistant", "", [ToolCall("t1", "update_score", {"correct": True})], reasoning="thinking..."),
+               Message("tool", '{"score": 1}', tool_call_id="t1")]
+    assert to_openai_messages("s", history, include_reasoning=True)[2]["reasoning_content"] == "thinking..."
+    assert "reasoning_content" not in to_openai_messages("s", history)[2]
+
+
+def test_factory_builds_deepseek_with_thinking_off_by_default(monkeypatch):
+    import llm as llm_pkg
+    monkeypatch.setenv("LLM_PROVIDER", "deepseek")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-" + "x" * 30)
+    monkeypatch.delenv("DEEPSEEK_THINKING", raising=False)
+    monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
+    assert llm_pkg.provider_settings()[2:] == ("deepseek-flash", "https://api.deepseek.com")
+    assert llm_pkg.deepseek_options() == ({"thinking": {"type": "disabled"}}, False)
+    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
+    assert llm_pkg.deepseek_options() == ({"thinking": {"type": "enabled"}}, True)
+    monkeypatch.setenv("DEEPSEEK_THINKING", "maybe")
+    with pytest.raises(llm_pkg.LLMConfigError):
+        llm_pkg.deepseek_options()

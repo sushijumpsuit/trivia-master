@@ -1,6 +1,6 @@
 """Sanity check: confirms the configured LLM provider responds and ChromaDB works.
 
-Pick the provider with LLM_PROVIDER in backend/.env (anthropic, openai, groq, gemini).
+Pick the provider with LLM_PROVIDER in backend/.env (anthropic, openai, groq, gemini, deepseek).
 Run from backend/ with the venv active:  python sanity_check.py
 """
 import sys

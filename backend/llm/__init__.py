@@ -1,6 +1,6 @@
 """Pick the LLM provider from environment variables.
 
-LLM_PROVIDER = anthropic | openai | groq | gemini
+LLM_PROVIDER = anthropic | openai | groq | gemini | deepseek
 """
 from __future__ import annotations
 
@@ -16,7 +16,20 @@ PROVIDERS: dict[str, tuple[str, str, str, str | None]] = {
     "groq": ("GROQ_API_KEY", "GROQ_MODEL", "openai/gpt-oss-120b", "https://api.groq.com/openai/v1"),
     "gemini": ("GEMINI_API_KEY", "GEMINI_MODEL", "gemini-3.8-flash",
                "https://generativelanguage.googleapis.com/v1beta/openai/"),
+    "deepseek": ("DEEPSEEK_API_KEY", "DEEPSEEK_MODEL", "deepseek-flash", "https://api.deepseek.com"),
 }
+
+
+def deepseek_options() -> tuple[dict, bool]:
+    """DeepSeek thinking mode (DEEPSEEK_THINKING=enabled|disabled, default disabled).
+
+    Off by default: a trivia host doesn't need deep reasoning, and it's cheaper and faster.
+    If enabled, DeepSeek requires the reasoning to be sent back on later tool-calling requests.
+    """
+    thinking = os.getenv("DEEPSEEK_THINKING", "disabled").strip().lower()
+    if thinking not in ("enabled", "disabled"):
+        raise LLMConfigError("DEEPSEEK_THINKING must be 'enabled' or 'disabled'")
+    return {"thinking": {"type": thinking}}, thinking == "enabled"
 
 
 class LLMConfigError(Exception):
@@ -45,6 +58,10 @@ def get_llm() -> LLM:
         from .anthropic_llm import AnthropicLLM
         return AnthropicLLM(api_key=key, model=model)
     from .openai_compat import OpenAICompatLLM
+    if provider == "deepseek":
+        extra_body, include_reasoning = deepseek_options()
+        return OpenAICompatLLM(provider=provider, api_key=key, model=model, base_url=base_url,
+                               extra_body=extra_body, include_reasoning=include_reasoning)
     return OpenAICompatLLM(provider=provider, api_key=key, model=model, base_url=base_url)
 
 

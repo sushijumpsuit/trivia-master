@@ -38,12 +38,14 @@ class Message:
     content: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
     tool_call_id: str | None = None
+    reasoning: str = ""  # model's hidden reasoning; only sent back to providers that require it
 
 
 @dataclass
 class LLMReply:
     text: str
     tool_calls: list[ToolCall]
+    reasoning: str = ""
     input_tokens: int = 0
     output_tokens: int = 0
 
