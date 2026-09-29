@@ -100,7 +100,7 @@ Or run everything with Docker (after creating `backend/.env`):
 docker compose up --build        # frontend http://localhost:3000, backend http://localhost:8000
 ```
 
-The question memory lives in a Docker volume, so it survives restarts and rebuilds.
+The question memory lives in a Docker volume, so it survives restarts and rebuilds. Deploying to AWS (EC2 + Amplify) is covered in [docs/DEPLOY.md](docs/DEPLOY.md).
 
 From `backend/`: `pytest` (tests), `python eval_game.py --games 3` (auto-play and measure), `python tune_threshold.py` (check the duplicate rule).
 
