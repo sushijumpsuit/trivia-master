@@ -9,6 +9,7 @@ WORKDIR /app
 # NEXT_PUBLIC_ values are baked into the browser code at build time, so the API URL is a build argument
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+    NEXT_OUTPUT=standalone \
     NEXT_TELEMETRY_DISABLED=1
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

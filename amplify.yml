@@ -1,0 +1,21 @@
+# AWS Amplify build settings. The frontend is built as static files (Next.js export).
+# Set NEXT_PUBLIC_API_URL in the Amplify console (Environment variables) to the backend's https address.
+version: 1
+applications:
+  - appRoot: frontend
+    frontend:
+      phases:
+        preBuild:
+          commands:
+            - nvm use 22
+            - npm ci
+        build:
+          commands:
+            - NEXT_OUTPUT=export npm run build
+      artifacts:
+        baseDirectory: out
+        files:
+          - "**/*"
+      cache:
+        paths:
+          - node_modules/**/*
