@@ -21,7 +21,7 @@ class GameState:
     current_question: str | None = None
     current_answer: str | None = None   # never sent to the frontend while the question is open
     awaiting_answer: bool = False        # True between generate_question and update_score
-    player_answered: bool = False        # True once the player submits an answer to the open question
+    player_answered: bool = False        # True once the player submits an answer; unlocks update_score
     last_result: dict | None = None      # {"correct": bool, "answer": str} for the question just scored
     last_reaction: str = ""              # host's reaction, sent with the latest generate_question call
     asked_questions: list[str] = field(default_factory=list)  # normalised text of every question this game

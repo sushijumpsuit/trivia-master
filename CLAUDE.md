@@ -4,7 +4,9 @@ Read this before making any change. Frontend-specific rules also live in `fronte
 
 ## What this project is
 
-An AI-hosted trivia game. The player picks any topic; a Claude agent runs the round by calling real tools: `generate_question`, `check_duplicate`, `check_answer`, `update_score`, `adjust_difficulty`. ChromaDB stores every question ever asked so the agent never repeats itself, even with reworded questions.
+An AI-hosted trivia game. The player picks any topic; an LLM agent runs the round by calling real tools: `generate_question` (registers the question and the host's reaction, and from Phase 2 runs the ChromaDB duplicate check itself) and `update_score`, plus `adjust_difficulty` in Phase 3. There is no `check_answer` tool: the server puts the open question's correct answer in the system prompt. ChromaDB stores every question ever asked so the agent never repeats itself, even with reworded questions.
+
+Rules that must always hold live in code (tool checks), not only in the prompt: logs showed models don't follow prompt rules reliably.
 
 This is a **portfolio project for job applications**. The owner must be able to explain every line of the core logic in an interview. Clarity beats cleverness.
 

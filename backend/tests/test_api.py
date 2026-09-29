@@ -10,7 +10,6 @@ def client(monkeypatch):
     llm = FakeLLM([
         reply("", tool("generate_question", reaction="Hi!", question="Capital of Malaysia?", answer="Kuala Lumpur",
                        difficulty="easy")),
-        reply("", tool("check_answer", "a", player_answer="KL")),
         reply("", tool("update_score", "b", correct=True)),
         reply("", tool("generate_question", "c", reaction="Yes!", question="Largest state?", answer="Sarawak",
                        difficulty="medium")),

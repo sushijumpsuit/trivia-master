@@ -24,17 +24,9 @@ TOOL_SPECS: list[ToolSpec] = [
                 "first question: a greeting. After an answer: say if they were right, and give the correct "
                 "answer if they missed it. Never include the new question or its answer.")},
             "question": {"type": "string", "description": "The question text shown to the player."},
-            "answer": {"type": "string", "description": "The correct answer, short (a few words)."},
+            "answer": {"type": "string", "description": "The correct answer: a name, number or at most 8 words."},
             "difficulty": {"type": "string", "enum": list(DIFFICULTIES)},
         }, "required": ["reaction", "question", "answer", "difficulty"]},
-    ),
-    ToolSpec(
-        name="check_answer",
-        description=("Get the stored correct answer for the current question, to compare with the player's "
-                     "answer. Judge meaning, not exact wording (e.g. 'KL' matches 'Kuala Lumpur')."),
-        parameters={"type": "object", "properties": {
-            "player_answer": {"type": "string", "description": "The player's answer, verbatim."},
-        }, "required": ["player_answer"]},
     ),
     ToolSpec(
         name="update_score",
@@ -44,6 +36,10 @@ TOOL_SPECS: list[ToolSpec] = [
         }, "required": ["correct"]},
     ),
 ]
+
+
+MAX_ANSWER_WORDS = 8
+MAX_ANSWER_CHARS = 80
 
 
 def normalise_question(text: str) -> str:
@@ -57,11 +53,14 @@ def normalise_question(text: str) -> str:
 def generate_question(state: GameState, question: str, answer: str, difficulty: str,
                       reaction: str = "") -> dict[str, Any]:
     if state.awaiting_answer:
-        return {"error": "The current question hasn't been scored yet. Call check_answer and update_score first."}
+        return {"error": "The current question hasn't been scored yet. Call update_score first."}
     if difficulty not in DIFFICULTIES:
         return {"error": f"difficulty must be one of {DIFFICULTIES}"}
     if not question.strip() or not answer.strip():
         return {"error": "question and answer must not be empty"}
+    if len(answer.split()) > MAX_ANSWER_WORDS or len(answer) > MAX_ANSWER_CHARS:
+        return {"error": (f"The answer is too long. Use a short answer (a name, number or at most "
+                          f"{MAX_ANSWER_WORDS} words) and pick a question with one clear answer.")}
     key = normalise_question(question)
     if key in state.asked_questions:
         return {"error": "You already asked this question in this game. Write a different question."}
@@ -72,14 +71,6 @@ def generate_question(state: GameState, question: str, answer: str, difficulty: 
     state.last_reaction = reaction.strip()
     state.player_answered = False
     return {"status": "ok", "question_number": state.question_number}
-
-
-def check_answer(state: GameState, player_answer: str) -> dict[str, Any]:
-    if not state.awaiting_answer:
-        return {"error": "There is no open question to check."}
-    if not state.player_answered:
-        return {"error": "The player hasn't answered the current question yet. Wait for their answer."}
-    return {"expected_answer": state.current_answer, "player_answer": player_answer}
 
 
 def update_score(state: GameState, correct: bool) -> dict[str, Any]:
@@ -102,7 +93,6 @@ def update_score(state: GameState, correct: bool) -> dict[str, Any]:
 
 _TOOL_FUNCS: dict[str, Callable[..., dict[str, Any]]] = {
     "generate_question": generate_question,
-    "check_answer": check_answer,
     "update_score": update_score,
 }
 

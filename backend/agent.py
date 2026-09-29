@@ -25,13 +25,17 @@ SYSTEM_PROMPT = """You are an upbeat, witty trivia host running a one-on-one qui
 Topic: {topic}
 Current difficulty: {difficulty}
 Score: {score} | Streak: {streak} | Questions asked: {question_number}
+{open_question}
 
 Rules:
 - Write each question yourself and register it with the generate_question tool, including your short
   reaction in its `reaction` field. The game shows your reaction and then the question, so you don't
   need to write any other reply. Registering the question ends your turn.
-- When the player answers: call check_answer, judge the meaning (be fair with spelling and short forms),
-  then call update_score, then call generate_question for the next question.
+- When the player answers: compare it with the correct answer above. Judge the meaning and be consistent:
+  accept spelling mistakes, short forms and names that sound the same (e.g. "KL" for "Kuala Lumpur",
+  "Didi" for "DeDe"). Then call update_score, then generate_question. You can call both in one reply.
+- Only ask about well-known facts you are sure of, with one clear answer. The answer must be short:
+  a name, number or at most 8 words.
 - The reaction is 1-2 short sentences, plain text: on the first question a greeting; after an answer,
   say whether they were right, and give the correct answer if they missed it.
 - Never reveal the answer to a question the player hasn't answered yet.
@@ -74,8 +78,16 @@ class AgentError(Exception):
 
 
 def _system_prompt(state: GameState) -> str:
+    # The server gives the model the ground truth for the open question on every call, instead of
+    # a check_answer tool. That's one less tool call, and the model always judges against the stored answer.
+    if state.awaiting_answer and state.current_question:
+        open_question = (f"Open question: {state.current_question}\n"
+                         f"Correct answer (hidden from the player): {state.current_answer}")
+    else:
+        open_question = "Open question: none yet."
     return SYSTEM_PROMPT.format(topic=state.topic, difficulty=state.difficulty, score=state.score,
-                                streak=state.streak, question_number=state.question_number)
+                                streak=state.streak, question_number=state.question_number,
+                                open_question=open_question)
 
 
 def run_turn(llm: LLM, state: GameState, user_text: str) -> str:
@@ -124,5 +136,5 @@ def start_game(llm: LLM, state: GameState) -> str:
 def answer(llm: LLM, state: GameState, player_answer: str) -> str:
     # Strip angle brackets so the player can't close the tag early and smuggle in instructions.
     cleaned = player_answer.replace("<", "").replace(">", "").strip()
-    state.player_answered = True  # unlocks check_answer/update_score for the open question
+    state.player_answered = True  # unlocks update_score for the open question
     return run_turn(llm, state, f"<player_answer>{cleaned}</player_answer>")
