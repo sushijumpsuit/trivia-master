@@ -65,4 +65,4 @@
  - how to fix: a hybrid rule that combines distance with an answer check, looking at the 5 nearest past questions:
    - same answer (compared loosely: lowercase, no punctuation, "Jay" counts as "Jay Pritchett") and distance under 0.5 = repeat
    - different answer = repeat only if the question is nearly identical (distance under 0.05)
-   On the 20 pairs this catches 10/10 repeats with 0/10 false alarms. 20 pairs is a small set, so confirm it in the 2-game acceptance test (every check's distance is logged) and add new pairs to tune_threshold.py whenever it gets one wrong.
+   Confirmed by re-running tune_threshold.py with the real model: the hybrid rule catches 10/10 repeats with 0/10 false alarms (best plain cutoff: 8/10 and 1/10). 20 pairs is a small set, so confirm it in the 2-game acceptance test (every check's distance is logged) and add new pairs to tune_threshold.py whenever it gets one wrong.
