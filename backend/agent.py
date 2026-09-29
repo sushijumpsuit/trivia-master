@@ -31,6 +31,7 @@ Question {round_question} of {questions_per_round} in this round.
 Score: {score} | Streak: {streak}
 {open_question}
 {used_answers}
+{past_questions}
 
 Rules:
 - Write each question yourself and register it with the generate_question tool. The game shows it to the
@@ -42,7 +43,7 @@ Rules:
   question, unless this was the last question of the round. You can call both in one reply.
 - The reaction is 1-2 short sentences, plain text: say whether they were right, and give the correct
   answer if they missed it.
-- Never ask a question whose answer is in the already-used list: those facts were asked in earlier games.
+- Never repeat a fact from the already-asked questions or reuse an already-used answer, even reworded.
   If the famous facts are used up, pick less obvious ones you are still sure of.
 - Only ask about well-known facts you are sure of, with one clear answer. The answer must be short:
   a name, number or at most 8 words. The question field is only the question: no greeting, no "Next up".
@@ -82,12 +83,21 @@ def clean_reply(text: str, state: GameState, intro: bool = False) -> str:
 
 
 MAX_USED_ANSWERS = 60  # enough to steer the model; each answer is only a few tokens
+MAX_PAST_QUESTIONS = 30  # ~20 tokens each. The model avoids facts it can see as questions far better
+                         # than a bare answer list (DEVLOG bug 14)
 
 
 def _used_answers_line(state: GameState) -> str:
     if not state.used_answers:
         return "Already-used answers on this topic: none yet."
     return "Already-used answers on this topic (don't reuse): " + ", ".join(state.used_answers[-MAX_USED_ANSWERS:])
+
+
+def _past_questions_line(state: GameState) -> str:
+    if not state.past_questions:
+        return ""
+    recent = state.past_questions[-MAX_PAST_QUESTIONS:]
+    return "Already-asked questions on this topic (don't repeat these facts):\n" + "\n".join(f"- {x}" for x in recent)
 
 
 def load_used_answers(state: GameState) -> None:
@@ -97,11 +107,16 @@ def load_used_answers(state: GameState) -> None:
     offering the most famous facts, hitting the step cap on well-played topics (DEVLOG bug 11).
     """
     try:
-        past = memory.get_memory().related_answers(state.topic, MAX_USED_ANSWERS)
+        mem = memory.get_memory()
+        past = mem.related_answers(state.topic, MAX_USED_ANSWERS)
+        past_q = mem.related_questions(state.topic, MAX_PAST_QUESTIONS)
     except Exception as e:  # memory is optional; the duplicate check still protects the game
         log.warning("[game %s] could not load used answers: %s", state.id[:6], e)
-        past = []
+        past, past_q = [], []
     state.used_answers = list(dict.fromkeys(past + state.used_answers))
+    # Start each round from memory's closest matches to the topic (earlier rounds of this game are stored there too).
+    # Questions accepted during the round are appended by generate_question, newest last so they survive the cap.
+    state.past_questions = list(dict.fromkeys(past_q))
 
 
 class AgentError(Exception):
@@ -122,7 +137,8 @@ def _system_prompt(state: GameState) -> str:
                                 round_question=max(state.round_question, 1),
                                 questions_per_round=state.questions_per_round, score=state.score,
                                 streak=state.streak, open_question=open_question,
-                                used_answers=_used_answers_line(state))
+                                used_answers=_used_answers_line(state),
+                                past_questions=_past_questions_line(state))
 
 
 def _is_turn_start(m: Message) -> bool:

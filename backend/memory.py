@@ -134,6 +134,14 @@ class QuestionMemory:
         res = self._col.query(query_texts=[topic], n_results=min(limit, count), include=["metadatas"])
         return list(dict.fromkeys(meta["answer"] for meta in res["metadatas"][0]))  # dedupe, keep order
 
+    def related_questions(self, topic: str, limit: int = 30) -> list[str]:
+        """Past questions closest in meaning to the topic, as "question (answer)" lines for the prompt."""
+        count = self._col.count()
+        if count == 0:
+            return []
+        res = self._col.query(query_texts=[topic], n_results=min(limit, count), include=["metadatas"])
+        return list(dict.fromkeys(f'{m["question"]} ({m["answer"]})' for m in res["metadatas"][0]))
+
     def warm_up(self) -> None:
         """Load the embedding model now, so the first question of the day isn't slow."""
         self._col.query(query_texts=["warm up"], n_results=1)  # embeds the text even if the store is empty

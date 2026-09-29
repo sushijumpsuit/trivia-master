@@ -110,6 +110,7 @@ def generate_question(state: GameState, question: str, answer: str, intro: str =
         return error
     state.asked_questions.append(key)
     state.used_answers.append(answer.strip())
+    state.past_questions.append(f"{question.strip()} ({answer.strip()})")
     remember(state, question, answer)
     state.question_number += 1
     state.round_question += 1

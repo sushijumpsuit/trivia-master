@@ -268,3 +268,31 @@ def test_nudges_are_not_treated_as_turn_starts():
                M("user", "<player_answer>b</player_answer>"), M("assistant", "y"),
                M("user", "(Game engine) The turn isn't finished: call update_score with your reaction.")]
     assert agent.recent_turns(history, keep=1)[0].content == "<player_answer>b</player_answer>"
+
+
+
+# ---------- Bug 14: show the model the questions already asked ----------
+
+def test_prompt_lists_questions_asked_earlier_in_the_round():
+    g = started(per_round=10)
+    agent.answer(FakeLLM([reply("", score(), q("n", question="Largest state?", answer="Sarawak"))]), g, "x")
+    llm = FakeLLM([reply("", score(), q("n2", question="Longest river?", answer="Rajang"))])
+    agent.answer(llm, g, "y")
+    system = llm.calls[0]["system"]
+    assert "Already-asked questions on this topic" in system
+    assert "- Largest state? (Sarawak)" in system
+
+
+def test_new_round_loads_past_questions_from_memory(fake_memory):
+    fake_memory.add("Jay's dog?", "Stella", "modern family", "old-game")
+    llm = FakeLLM([reply("", q(intro="Hi", question="Cam's home state?", answer="Missouri"))])
+    agent.start_game(llm, GameState(topics=["Modern Family"]))
+    assert "- Jay's dog? (Stella)" in llm.calls[0]["system"]
+
+
+def test_past_questions_are_capped():
+    g = GameState(topics=["t"])
+    g.past_questions = [f"q{i} (a{i})" for i in range(50)]
+    line = agent._past_questions_line(g)
+    assert line.count("\n- ") == agent.MAX_PAST_QUESTIONS
+    assert "q49 (a49)" in line and "q0 (a0)" not in line

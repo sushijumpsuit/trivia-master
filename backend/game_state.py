@@ -28,6 +28,7 @@ class GameState:
     last_intro: str = ""                 # host's intro for the first question of a round
     used_answers: list[str] = field(default_factory=list)  # answers to avoid this round (memory + this game)
     asked_questions: list[str] = field(default_factory=list)  # normalised text of every question this game
+    past_questions: list[str] = field(default_factory=list)  # "question (answer)" on this topic, shown to the model
     history: list[Message] = field(default_factory=list)
 
     def __post_init__(self) -> None:
