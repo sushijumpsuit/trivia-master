@@ -38,6 +38,8 @@ backend/
   memory.py          all ChromaDB code (store, similarity search)
   game_state.py      score / streak / rounds per game
   sanity_check.py    Phase 0 check that the configured LLM and Chroma work
+  eval_game.py       auto-plays games with a simulated player and reports metrics (logs/eval-*.json)
+  tune_threshold.py  measures duplicate distances on labelled question pairs
   tests/             pytest tests
 frontend/app/        Next.js page (a small state machine: setup, playing, round break, game over)
 frontend/components/ SetupScreen, CardStack (flip + throw), AnswerBar, Hud, RoundBreak, GameOver
@@ -101,7 +103,8 @@ Update the bold marker when a phase is finished.
 # backend
 cd backend; .\venv\Scripts\Activate.ps1
 python sanity_check.py
-python tune_threshold.py         # measure duplicate distances, pick DUPLICATE_DISTANCE
+python tune_threshold.py         # measure duplicate distances, check the hybrid rule
+python eval_game.py              # auto-play games with a simulated player; report calls, cost, marking, repeats
 uvicorn main:app --reload        # http://127.0.0.1:8000/docs
 pytest
 
