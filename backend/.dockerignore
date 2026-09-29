@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+*.pyc
+.env
+chroma_data/
+logs/
+tests/
+_to_delete/
+.pytest_cache/

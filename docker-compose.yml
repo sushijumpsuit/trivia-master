@@ -1,0 +1,31 @@
+# Run the whole app: docker compose up --build
+# Backend secrets come from backend/.env (never baked into the image).
+services:
+  backend:
+    build: ./backend
+    env_file: ./backend/.env
+    environment:
+      CHROMA_PATH: /app/chroma_data
+      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:3000}
+    ports:
+      - "8000:8000"
+    volumes:
+      - chroma_data:/app/chroma_data   # question memory survives restarts and rebuilds
+      - ./backend/logs:/app/logs       # game logs readable on the host
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # The browser calls the backend directly, so this is the address as seen from the browser
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+    ports:
+      - "3000:3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  chroma_data:
