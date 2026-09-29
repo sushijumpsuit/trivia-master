@@ -17,7 +17,12 @@ import agent  # noqa: E402
 from game_state import GameStore  # noqa: E402
 from llm import LLMConfigError, LLMError, get_llm, provider_settings  # noqa: E402
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
+# Log to the terminal and to backend/logs/trivia.log (git-ignored) so game runs can be reviewed later.
+os.makedirs("logs", exist_ok=True)
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+                    datefmt="%Y-%m-%d %H:%M:%S",
+                    handlers=[logging.StreamHandler(),
+                              logging.FileHandler("logs/trivia.log", encoding="utf-8")])
 log = logging.getLogger("trivia")
 app = FastAPI(title="Trivia Master API")
 store = GameStore()

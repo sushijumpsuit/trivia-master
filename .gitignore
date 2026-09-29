@@ -62,3 +62,6 @@ __pycache__/
 # ChromaDB local data
 chroma_data/
 _to_delete/
+
+# Backend logs
+logs/
