@@ -75,8 +75,8 @@ Keep these responsibilities separate. Routes should not contain agent logic; the
 ## Build phases (current phase in bold)
 
 0. Setup: venv, packages, sanity check, first commit (done 26 Sep 2026, on Groq)
-1. **Core game loop without memory: `llm/base.py` interface + first adapter (Groq or Gemini, free), neutral tool schemas, agent loop, `/game/start` and `/game/{id}/answer`, minimal UI; then add the Anthropic adapter**
-2. ChromaDB memory + `check_duplicate`; verify 20+ rounds with no repeats
+1. Core game loop without memory: `llm/base.py` interface + first adapter (Groq or Gemini, free), neutral tool schemas, agent loop, `/game/start` and `/game/{id}/answer`, minimal UI; then add the Anthropic adapter (done 29 Sep 2026)
+2. **ChromaDB memory: duplicate check inside `generate_question` (memory.py), cutoff tuned with tune_threshold.py; verify 20+ rounds across 2 games with no repeats**
 3. Polish: `adjust_difficulty`, host personality, summary, frontend feedback; eval script that auto-plays N rounds and reports duplicate rate + loop steps per question, per provider
 4. Docker + docker-compose (Chroma on a named volume)
 5. Deploy: backend on EC2 with HTTPS, frontend on Amplify; per-visitor rate limit + daily question cap so the public demo can't drain API credit
@@ -99,6 +99,7 @@ Update the bold marker when a phase is finished.
 # backend
 cd backend; .\venv\Scripts\Activate.ps1
 python sanity_check.py
+python tune_threshold.py         # measure duplicate distances, pick DUPLICATE_DISTANCE
 uvicorn main:app --reload        # http://127.0.0.1:8000/docs
 pytest
 

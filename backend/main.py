@@ -5,6 +5,7 @@ Then open http://127.0.0.1:8000/docs
 """
 import logging
 import os
+from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -14,6 +15,7 @@ from pydantic import BaseModel, Field
 load_dotenv()  # before importing modules that read env vars
 
 import agent  # noqa: E402
+import memory  # noqa: E402
 from game_state import GameStore  # noqa: E402
 from llm import LLMConfigError, LLMError, get_llm, provider_settings  # noqa: E402
 
@@ -24,7 +26,18 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
                     handlers=[logging.StreamHandler(),
                               logging.FileHandler("logs/trivia.log", encoding="utf-8")])
 log = logging.getLogger("trivia")
-app = FastAPI(title="Trivia Master API")
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # Open the question memory and load the embedding model at startup, not on the first question.
+    try:
+        memory.get_memory().warm_up()
+        log.info("Question memory ready: %d questions stored", memory.get_memory().count())
+    except Exception as e:
+        log.warning("Question memory unavailable, duplicate check disabled: %s", e)
+    yield
+
+
+app = FastAPI(title="Trivia Master API", lifespan=lifespan)
 store = GameStore()
 
 app.add_middleware(
@@ -63,7 +76,11 @@ def health() -> dict:
         provider, _, model, _ = provider_settings()
     except LLMConfigError:
         provider, model = "not configured", ""
-    return {"status": "ok", "provider": provider, "model": model}
+    try:
+        stored = memory.get_memory().count()
+    except Exception:
+        stored = None
+    return {"status": "ok", "provider": provider, "model": model, "questions_stored": stored}
 
 
 @app.post("/game/start")

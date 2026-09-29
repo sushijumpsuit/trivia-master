@@ -5,11 +5,15 @@ Each tool function validates the call against the game state. Invalid calls retu
 """
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Callable
 
+import memory
 from game_state import DIFFICULTIES, GameState
 from llm import ToolSpec
+
+log = logging.getLogger("trivia.tools")
 
 TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
@@ -45,9 +49,39 @@ MAX_ANSWER_CHARS = 80
 def normalise_question(text: str) -> str:
     """Lowercase and drop punctuation/extra spaces, so trivial differences don't hide a repeat.
 
-    Exact repeats only. Reworded repeats are Phase 2's job (ChromaDB similarity search).
+    A cheap exact check within one game. Reworded repeats, across all games, are caught by the
+    ChromaDB similarity check in check_memory().
     """
     return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
+
+
+def check_memory(state: GameState, question: str, answer: str) -> dict[str, Any] | None:
+    """Return an error if a past question (any game) means the same thing, else None.
+
+    If the memory itself fails, log it and let the question through: a broken memory
+    shouldn't stop the game.
+    """
+    try:
+        match = memory.get_memory().nearest(question, answer)
+    except Exception as e:  # ChromaDB/embedding failure
+        log.warning("[game %s] memory check failed, skipping: %s", state.id[:6], e)
+        return None
+    if match is None:
+        return None
+    threshold = memory.duplicate_threshold()
+    log.info("[game %s] dup-check distance=%.3f (cutoff %.2f) nearest=%r", state.id[:6], match.distance,
+             threshold, match.question)
+    if match.distance < threshold:
+        return {"error": (f"Too similar to a question already asked: \"{match.question}\" "
+                          f"(answer: {match.answer}). Write a question about a different fact.")}
+    return None
+
+
+def remember(state: GameState, question: str, answer: str, difficulty: str) -> None:
+    try:
+        memory.get_memory().add(question, answer, state.topic, difficulty, state.id)
+    except Exception as e:
+        log.warning("[game %s] could not save question to memory: %s", state.id[:6], e)
 
 
 def generate_question(state: GameState, question: str, answer: str, difficulty: str,
@@ -64,7 +98,10 @@ def generate_question(state: GameState, question: str, answer: str, difficulty: 
     key = normalise_question(question)
     if key in state.asked_questions:
         return {"error": "You already asked this question in this game. Write a different question."}
+    if (error := check_memory(state, question, answer)) is not None:
+        return error
     state.asked_questions.append(key)
+    remember(state, question, answer, difficulty)
     state.question_number += 1
     state.current_question, state.current_answer = question.strip(), answer.strip()
     state.difficulty, state.awaiting_answer = difficulty, True

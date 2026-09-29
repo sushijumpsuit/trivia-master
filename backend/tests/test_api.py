@@ -35,3 +35,8 @@ def test_validation_and_unknown_game(client):
     assert client.post("/game/start", json={"topic": ""}).status_code == 422
     assert client.post("/game/start", json={"topic": "x" * 81}).status_code == 422
     assert client.post("/game/nope/answer", json={"answer": "a"}).status_code == 404
+
+
+def test_health_reports_stored_questions(client):
+    client.post("/game/start", json={"topic": "Malaysia"})
+    assert client.get("/health").json()["questions_stored"] == 1

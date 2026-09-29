@@ -1,3 +1,4 @@
+from conftest import FakeMemory
 from game_state import GameState
 from tools import run_tool
 
@@ -100,3 +101,37 @@ def test_long_rambling_answers_are_rejected():
 def test_check_answer_tool_is_gone():
     from tools import TOOL_SPECS
     assert [t.name for t in TOOL_SPECS] == ["generate_question", "update_score"]
+
+
+# ---------- Phase 2: long-term memory ----------
+
+def test_reworded_repeat_from_an_earlier_game_is_rejected(fake_memory):
+    old = "In which country was Gloria Delgado-Pritchett born?"
+    new = "Gloria Delgado-Pritchett hails from which South American country?"
+    fake_memory.similar = FakeMemory(similar=[(old, new)]).similar
+    run_tool(GameState(topic="Modern Family"), "generate_question",
+             {"question": old, "answer": "Colombia", "difficulty": "easy"})
+    g = GameState(topic="modern family")  # a new game
+    result = run_tool(g, "generate_question", {"question": new, "answer": "Colombia", "difficulty": "easy"})
+    assert "error" in result and old in result["error"]
+    assert g.question_number == 0 and fake_memory.count() == 1  # rejected question isn't stored
+
+
+def test_accepted_questions_are_stored_with_topic_and_game(fake_memory):
+    g = GameState(topic="Malaysia")
+    run_tool(g, "generate_question", {"question": "Capital?", "answer": "Kuala Lumpur", "difficulty": "easy"})
+    assert fake_memory.items == [{"question": "Capital?", "answer": "Kuala Lumpur", "topic": "Malaysia",
+                                  "game_id": g.id}]
+
+
+def test_unrelated_question_is_accepted(fake_memory):
+    run_tool(new_game(), "generate_question", {"question": "Capital of Malaysia?", "answer": "KL", "difficulty": "easy"})
+    result = run_tool(new_game(), "generate_question", {"question": "Largest state?", "answer": "Sarawak",
+                                                        "difficulty": "easy"})
+    assert result["status"] == "ok"
+
+
+def test_broken_memory_does_not_stop_the_game():
+    import memory
+    memory.set_memory(FakeMemory(fail=True))
+    assert run_tool(new_game(), "generate_question", {"question": "q", "answer": "a", "difficulty": "easy"})["status"] == "ok"

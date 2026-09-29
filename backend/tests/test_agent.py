@@ -123,3 +123,21 @@ def test_system_prompt_gives_the_model_the_correct_answer_only_while_a_question_
                               difficulty="easy"))])
     agent.answer(llm, g, "KL")
     assert "Correct answer (hidden from the player): Kuala Lumpur" in llm.calls[0]["system"]
+
+
+def test_model_rewrites_a_question_rejected_as_a_repeat(fake_memory):
+    """Phase 2: memory rejects a reworded repeat, the model sees the error and writes a new question."""
+    from conftest import FakeMemory
+    old, reworded = "Which actor plays Phil Dunphy?", "Who portrays Phil Dunphy in Modern Family?"
+    fake_memory.similar = FakeMemory(similar=[(old, reworded)]).similar
+    fake_memory.add(old, "Ty Burrell", "modern family", "easy", "earlier-game")
+    llm = FakeLLM([
+        reply("", tool("generate_question", "a", reaction="Hi!", question=reworded, answer="Ty Burrell", difficulty="easy")),
+        reply("", tool("generate_question", "b", reaction="Hi!", question="Who plays Claire Dunphy?",
+                       answer="Julie Bowen", difficulty="easy")),
+    ])
+    g = GameState(topic="Modern Family")
+    assert agent.start_game(llm, g) == "Hi!"
+    assert g.current_question == "Who plays Claire Dunphy?" and g.question_number == 1
+    rejection = [m.content for m in g.history if m.role == "tool"][0]
+    assert "Too similar" in rejection and old in rejection
