@@ -102,3 +102,10 @@
  - what went wrong: the same-answer cutoff was 0.5. Both pairs share an answer and sit just under it, but ask about different facts.
  - how to fix: lowered the cutoff to 0.46. The loosest real repeat seen so far is 0.441, so 0.46 still catches every known repeat and lets both false alarms through. Added both pairs to tune_threshold.py and to the tests.
  - lesson: a threshold is only as good as the data behind it. Keep every false alarm and every miss as a test case.
+
+
+## Bug 14: trimming the history made the model repeat itself (memory has a cost either way)
+ - scenario: to stop input tokens growing in long rounds, I sent the model only the last 2 turns instead of the whole round. I re-ran the eval (5 rounds x 20 questions, same seed). Input tokens per question halved (7,042 to 3,617) and cost per question fell 28% ($0.0026 to $0.00186). But duplicate rejections went from 10 to 44, model calls per question from 1.2 to 1.6, output tokens from 409 to 641, and time per turn from 2.9 s to 3.8 s.
+ - what went wrong: the model forgot the questions it had asked earlier in the round, so it kept offering the same famous facts again (Greenland, Valentina Tereshkova, James Webb). The ChromaDB check caught every one, so no repeat reached the player, but each rejection cost a whole extra call. The "already-used answers" list was still in the prompt; the model mostly ignored it. It avoided repeats well when it could see its own earlier questions.
+ - how to fix: keep the trimming, but put the questions already asked on the topic into the system prompt (about 20 tokens each, last 30 or so, about 600 tokens). That gives back the memory that mattered without replaying reactions, tool results and reasoning. Next eval run checks it.
+ - lesson: the model needs memory, and you pay for it either way: up front in context, or later in retries and latency. The job is to find the smallest form of memory that still works.
