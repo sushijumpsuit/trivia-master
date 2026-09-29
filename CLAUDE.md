@@ -17,7 +17,7 @@ This is a **portfolio project for job applications**. The owner must be able to 
 - **LLM:** multi-provider, chosen by the `LLM_PROVIDER` env var (`anthropic`, `openai`, `groq`, `gemini`, `deepseek`). Two hand-written adapters behind one interface:
   - `anthropic_llm.py` uses the `anthropic` SDK (Messages API, native tool use).
   - `openai_compat.py` uses the `openai` SDK for OpenAI, Groq, Gemini, and DeepSeek, which all accept OpenAI's chat-completions format at different base URLs.
-  - DeepSeek thinking mode is off by default (`DEEPSEEK_THINKING`). If enabled, the adapter must send `reasoning_content` back on later tool-calling requests, or DeepSeek returns 400.
+  - DeepSeek thinking mode is on by default (`DEEPSEEK_THINKING`): a side-by-side test showed far fewer wrong questions. The adapter must send `reasoning_content` back on later tool-calling requests, or DeepSeek returns 400.
   - Model per provider comes from env vars (`ANTHROPIC_MODEL`, `OPENAI_MODEL`, `GROQ_MODEL`, `GEMINI_MODEL`, `DEEPSEEK_MODEL`); see `backend/.env.example`.
   - Do **not** use LiteLLM or similar wrapper libraries. Writing the adapters by hand is the point: it shows how each vendor's tool calling works.
 - **Vector store:** ChromaDB with a persistent client writing to `backend/chroma_data/` (git-ignored; a Docker volume in production).

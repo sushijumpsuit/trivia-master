@@ -120,16 +120,16 @@ def test_reasoning_is_sent_back_only_when_enabled():
     assert "reasoning_content" not in to_openai_messages("s", history)[2]
 
 
-def test_factory_builds_deepseek_with_thinking_off_by_default(monkeypatch):
+def test_factory_builds_deepseek_with_thinking_on_by_default(monkeypatch):
     import llm as llm_pkg
     monkeypatch.setenv("LLM_PROVIDER", "deepseek")
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-" + "x" * 30)
     monkeypatch.delenv("DEEPSEEK_THINKING", raising=False)
     monkeypatch.delenv("DEEPSEEK_MODEL", raising=False)
     assert llm_pkg.provider_settings()[2:] == ("deepseek-flash", "https://api.deepseek.com")
-    assert llm_pkg.deepseek_options() == ({"thinking": {"type": "disabled"}}, False)
-    monkeypatch.setenv("DEEPSEEK_THINKING", "enabled")
     assert llm_pkg.deepseek_options() == ({"thinking": {"type": "enabled"}}, True)
+    monkeypatch.setenv("DEEPSEEK_THINKING", "disabled")
+    assert llm_pkg.deepseek_options() == ({"thinking": {"type": "disabled"}}, False)
     monkeypatch.setenv("DEEPSEEK_THINKING", "maybe")
     with pytest.raises(llm_pkg.LLMConfigError):
         llm_pkg.deepseek_options()

@@ -21,12 +21,13 @@ PROVIDERS: dict[str, tuple[str, str, str, str | None]] = {
 
 
 def deepseek_options() -> tuple[dict, bool]:
-    """DeepSeek thinking mode (DEEPSEEK_THINKING=enabled|disabled, default disabled).
+    """DeepSeek thinking mode (DEEPSEEK_THINKING=enabled|disabled, default enabled).
 
-    Off by default: a trivia host doesn't need deep reasoning, and it's cheaper and faster.
-    If enabled, DeepSeek requires the reasoning to be sent back on later tool-calling requests.
+    On by default: in a side-by-side test (same topic, one game each), thinking cut wrong or
+    self-contradicting questions from about 5 in 9 to 0 in 11, for about 2 extra seconds per turn.
+    When enabled, DeepSeek requires the reasoning to be sent back on later tool-calling requests.
     """
-    thinking = os.getenv("DEEPSEEK_THINKING", "disabled").strip().lower()
+    thinking = os.getenv("DEEPSEEK_THINKING", "enabled").strip().lower()
     if thinking not in ("enabled", "disabled"):
         raise LLMConfigError("DEEPSEEK_THINKING must be 'enabled' or 'disabled'")
     return {"thinking": {"type": thinking}}, thinking == "enabled"
