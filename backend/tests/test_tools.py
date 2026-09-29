@@ -81,3 +81,9 @@ def test_same_question_cannot_be_asked_twice_in_a_game():
     assert "error" in again and g.question_number == 1 and not g.awaiting_answer
     assert run_tool(g, "generate_question", {"question": "Who is Morty's sister?", "answer": "Summer",
                                              "difficulty": "easy"})["status"] == "ok"
+
+
+def test_generate_question_stores_the_reaction():
+    g = new_game()
+    run_tool(g, "generate_question", {"reaction": "Welcome!", "question": "q", "answer": "a", "difficulty": "easy"})
+    assert g.last_reaction == "Welcome!"

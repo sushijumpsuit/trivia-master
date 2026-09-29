@@ -20,7 +20,11 @@ def to_anthropic_messages(messages: list[Message]) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for m in messages:
         if m.role == "user":
-            out.append({"role": "user", "content": m.content})
+            prev = out[-1] if out else None
+            if prev and prev["role"] == "user" and isinstance(prev["content"], list):
+                prev["content"].append({"type": "text", "text": m.content})  # keep roles alternating
+            else:
+                out.append({"role": "user", "content": m.content})
         elif m.role == "assistant":
             blocks: list[dict[str, Any]] = []
             if m.content:

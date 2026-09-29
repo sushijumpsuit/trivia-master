@@ -25,3 +25,9 @@
  - what went wrong: after I answered Q3 wrongly (close answer), the model registered the exact same question again as Q4.
  - why: nothing in Phase 1 stopped repeats. `generate_question` accepted any text, and the model probably re-asked to give me another try.
  - how to fix: the game now keeps a list of every question asked (lowercased, punctuation removed). `generate_question` rejects a repeat with an error telling the model to write a different question, and the model self-corrects on its next step. This only catches exact repeats in one game; reworded repeats across games are Phase 2's job (ChromaDB `check_duplicate`). Added a regression test with the real question.
+
+5. Host's feedback lost, and an extra model call every turn
+ - e.g. (DeepSeek log): the model wrote `No worries, the answer is Phil Dunphy, Realtor...` together with its tool calls, but the player saw a later, vaguer reply: `Next question's up, this one should feel a bit more familiar.`
+ - what went wrong: after a wrong answer the player never saw the correct answer. On Groq (`gpt-oss`) the same extra step was where replies turned into garbage.
+ - why: the agent loop kept calling the model after the next question was registered, only to get a final text reply. The last text won, so good feedback written earlier in the turn was thrown away. That extra call also cost tokens and added to Groq's rate limits.
+ - how to fix: added a `reaction` field to `generate_question`. The model writes its feedback there, and the turn ends as soon as the next question is registered. No extra call. With DeepSeek, which calls several tools in one reply, most turns now take one model call. For Anthropic, the next player message is merged into the tool-result message so roles still alternate. Added a regression test that replays the DeepSeek turn.

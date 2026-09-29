@@ -8,12 +8,12 @@ from conftest import FakeLLM, reply, tool
 @pytest.fixture
 def client(monkeypatch):
     llm = FakeLLM([
-        reply("", tool("generate_question", question="Capital of Malaysia?", answer="Kuala Lumpur", difficulty="easy")),
-        reply("Hi! Capital of Malaysia?"),
+        reply("", tool("generate_question", reaction="Hi!", question="Capital of Malaysia?", answer="Kuala Lumpur",
+                       difficulty="easy")),
         reply("", tool("check_answer", "a", player_answer="KL")),
         reply("", tool("update_score", "b", correct=True)),
-        reply("", tool("generate_question", "c", question="Largest state?", answer="Sarawak", difficulty="medium")),
-        reply("Yes! Largest state?"),
+        reply("", tool("generate_question", "c", reaction="Yes!", question="Largest state?", answer="Sarawak",
+                       difficulty="medium")),
     ])
     monkeypatch.setattr(main, "get_llm", lambda: llm)
     return TestClient(main.app)
@@ -23,7 +23,8 @@ def test_start_then_answer(client):
     r = client.post("/game/start", json={"topic": "Malaysia"})
     assert r.status_code == 200
     body = r.json()
-    assert body["current_question"] == "Capital of Malaysia?" and "Kuala Lumpur" not in str(body)
+    assert body["message"] == "Hi!" and body["current_question"] == "Capital of Malaysia?"
+    assert "Kuala Lumpur" not in str(body)
 
     r = client.post(f"/game/{body['game_id']}/answer", json={"answer": "KL"})
     body = r.json()

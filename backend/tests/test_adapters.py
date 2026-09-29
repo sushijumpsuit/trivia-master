@@ -133,3 +133,12 @@ def test_factory_builds_deepseek_with_thinking_off_by_default(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_THINKING", "maybe")
     with pytest.raises(llm_pkg.LLMConfigError):
         llm_pkg.deepseek_options()
+
+
+
+def test_anthropic_merges_player_message_after_tool_results():
+    """Turns now end on tool results, so the next player message must join that user message."""
+    history = HISTORY + [Message("user", "<player_answer>KL</player_answer>")]
+    out = to_anthropic_messages(history)
+    assert [m["role"] for m in out] == ["user", "assistant", "user"]
+    assert out[2]["content"][-1] == {"type": "text", "text": "<player_answer>KL</player_answer>"}

@@ -14,14 +14,19 @@ from llm import ToolSpec
 TOOL_SPECS: list[ToolSpec] = [
     ToolSpec(
         name="generate_question",
-        description=("Register the next trivia question you have written. The answer is stored on the "
-                     "server and hidden from the player. Call this exactly once per question, only after "
-                     "the previous question has been scored."),
+        description=("Register the next trivia question you have written, together with your reaction to "
+                     "the player's last answer. The answer is stored on the server and hidden from the player. "
+                     "Call this exactly once per question, only after the previous question has been scored. "
+                     "This ends your turn: the game shows your reaction and then the question."),
         parameters={"type": "object", "properties": {
+            "reaction": {"type": "string", "description": (
+                "What you say to the player before the question, 1-2 short sentences, plain text. On the "
+                "first question: a greeting. After an answer: say if they were right, and give the correct "
+                "answer if they missed it. Never include the new question or its answer.")},
             "question": {"type": "string", "description": "The question text shown to the player."},
             "answer": {"type": "string", "description": "The correct answer, short (a few words)."},
             "difficulty": {"type": "string", "enum": list(DIFFICULTIES)},
-        }, "required": ["question", "answer", "difficulty"]},
+        }, "required": ["reaction", "question", "answer", "difficulty"]},
     ),
     ToolSpec(
         name="check_answer",
@@ -49,7 +54,8 @@ def normalise_question(text: str) -> str:
     return " ".join(re.sub(r"[^\w\s]", " ", text.lower()).split())
 
 
-def generate_question(state: GameState, question: str, answer: str, difficulty: str) -> dict[str, Any]:
+def generate_question(state: GameState, question: str, answer: str, difficulty: str,
+                      reaction: str = "") -> dict[str, Any]:
     if state.awaiting_answer:
         return {"error": "The current question hasn't been scored yet. Call check_answer and update_score first."}
     if difficulty not in DIFFICULTIES:
@@ -63,6 +69,7 @@ def generate_question(state: GameState, question: str, answer: str, difficulty: 
     state.question_number += 1
     state.current_question, state.current_answer = question.strip(), answer.strip()
     state.difficulty, state.awaiting_answer = difficulty, True
+    state.last_reaction = reaction.strip()
     state.player_answered = False
     return {"status": "ok", "question_number": state.question_number}
 
