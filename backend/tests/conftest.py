@@ -62,6 +62,14 @@ class FakeMemory:
 
 
 @pytest.fixture(autouse=True)
+def no_rate_limits(monkeypatch):
+    """Tests start many games from one client; rate limits get their own tests."""
+    import main
+    from ratelimit import RateLimiter
+    monkeypatch.setattr(main, "limiter", RateLimiter(0, 0, 0))
+
+
+@pytest.fixture(autouse=True)
 def fake_memory(monkeypatch):
     """Every test gets a fresh, empty fake memory and the default cutoffs."""
     monkeypatch.delenv("DUP_SAME_ANSWER_DISTANCE", raising=False)

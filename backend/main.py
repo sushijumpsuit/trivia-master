@@ -8,7 +8,7 @@ import os
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
@@ -18,6 +18,7 @@ import agent  # noqa: E402
 import memory  # noqa: E402
 from game_state import GameStore, expand_topics  # noqa: E402
 from llm import LLMConfigError, LLMError, get_llm, provider_settings  # noqa: E402
+from ratelimit import LimitExceeded, RateLimiter  # noqa: E402
 
 # Log to the terminal and to backend/logs/trivia.log (git-ignored) so game runs can be reviewed later.
 os.makedirs("logs", exist_ok=True)
@@ -39,6 +40,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(title="Trivia Master API", lifespan=lifespan)
 store = GameStore()
+limiter = RateLimiter.from_env()
 
 app.add_middleware(
     CORSMiddleware,
@@ -94,11 +96,18 @@ def health() -> dict:
         stored = memory.get_memory().count()
     except Exception:
         stored = None
-    return {"status": "ok", "provider": provider, "model": model, "questions_stored": stored}
+    return {"status": "ok", "provider": provider, "model": model, "questions_stored": stored, **limiter.usage()}
 
 
 @app.post("/game/start")
-def start_game(req: StartRequest) -> dict:
+def start_game(req: StartRequest, request: Request) -> dict:
+    # Behind the Caddy proxy, uvicorn's --proxy-headers makes this the visitor's real IP.
+    ip = request.client.host if request.client else "unknown"
+    try:
+        limiter.reserve_game(ip, req.rounds * req.questions_per_round)
+    except LimitExceeded as e:
+        log.info("rate limit: %s (%s)", e, ip)
+        raise HTTPException(status_code=429, detail=str(e))
     game = store.create(expand_topics(req.topics, req.rounds), req.questions_per_round)
     message = _run(agent.start_game, game)
     return {"message": message, **game.public_view()}
