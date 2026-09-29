@@ -16,15 +16,26 @@ From [`eval_game.py`](backend/eval_game.py): full games with the real agent and 
 | Metric | Result |
 |---|---|
 | Questions completed | **100 / 100**, 0 failed turns |
-| Answer marking | **100 / 100** (42/42 correct, **18/18 typos** accepted, 40/40 wrong rejected) |
+| Answer marking | **100 / 100** (39/39 correct, **17/17 typos** accepted, 44/44 wrong rejected) |
 | Repeats that reached the player | **0** |
-| Model calls per question | 1.2 |
-| Time per turn | 2.9 s average |
-| Cost | $0.001 per question at 5 per round, $0.0026 at 20 per round (before cache discounts) |
+| Model calls per question | 1.38 |
+| Time per turn | 3.5 s average |
+| Cost | $0.0018 per question, about $0.18 for a 100-question game (before cache discounts) |
 
 - **Duplicate check:** on 20 labelled question pairs, the best plain embedding cutoff caught 8/10 repeats with 1/10 false alarms. The hybrid rule below catches **10/10 with 0/10**.
 - **Question accuracy:** thinking mode cut wrong questions from about 5 in 9 to 0 in 11, for about 2 s more per turn.
-- **Memory costs tokens either way:** sending only the last 2 turns halved input tokens, but the model forgot its earlier questions. Rejected repeats rose from 10 to 44 and calls from 1.2 to 1.6 per question, so most of the saving went into retries. Fix in progress: send a compact list of past questions instead of the full history ([DEVLOG bug 14](DEVLOG.md)).
+
+### Memory vs cost
+
+Sending the whole round's history to the model made input grow every turn. I tested three ways of giving the model memory (same eval, same seed):
+
+| Version | Cost per question | Rejected repeats | Calls per question | Time per turn |
+|---|---|---|---|---|
+| Full history | $0.0026 | 10 | 1.2 | 2.9 s |
+| Last 2 turns only | $0.0019 | 42 (avg of 2 runs) | 1.6 | 3.9 s |
+| **Last 2 turns + list of past questions** (current) | **$0.0018** | 25 | 1.38 | 3.5 s |
+
+Cutting history halved input tokens, but the model forgot its earlier questions and kept proposing them again. The server blocked every repeat, so each one cost an extra call. Adding a compact list of past questions (about 20 tokens each) brought back most of that memory. The current version is **30% cheaper** than full history; the trade-off is more retries and slightly slower turns. Details in [DEVLOG bug 14](DEVLOG.md).
 
 Single runs on one model: indicative, not benchmarks.
 
@@ -48,10 +59,10 @@ flowchart LR
 
 - **Rules in code, not the prompt.** Logs showed the model ignoring prompt rules (repeats, scoring unseen questions). Each is now a tool check that returns an error the model can react to.
 - **Hybrid duplicate rule.** Embedding distance alone overlapped: some rewordings were far apart, some different questions were close. Every real repeat shared its answer, so a repeat is **same answer and distance < 0.46**, or **nearly identical (< 0.05)**. Tuned with [`tune_threshold.py`](backend/tune_threshold.py).
-- **Context engineering.** A `check_answer` tool was removed because the model ignored its result. The model gets the answers already used on the topic instead, and the eval showed what memory it actually needs (see Results).
+- **Context engineering.** A `check_answer` tool was removed because the model ignored its result. The model gets the questions and answers already used on the topic instead, and the eval showed what memory it actually needs (see Memory vs cost).
 - **Atomic turns.** If a turn fails halfway, game state is restored so the player can retry.
 - **Provider-neutral LLM layer.** Two hand-written adapters (Anthropic Messages API, OpenAI chat format for OpenAI, DeepSeek, Groq, Gemini) behind one interface. One env variable switches provider.
-- **Tested without API calls.** 99 pytest tests with a fake LLM, including replays of real failures.
+- **Tested without API calls.** 102 pytest tests with a fake LLM, including replays of real failures.
 
 Every bug, with cause and fix, is in [DEVLOG.md](DEVLOG.md).
 
@@ -92,7 +103,7 @@ From `backend/`: `pytest` (tests), `python eval_game.py --games 3` (auto-play an
 - [x] Rounds and flashcard UI
 - [x] Evaluation script
 - [x] Trim conversation history
-- [ ] Compact list of past questions in the prompt, to cut the retries trimming caused
+- [x] Compact list of past questions in the prompt
 - [ ] Docker and docker-compose
 - [ ] Deploy (AWS EC2 backend, AWS Amplify frontend) with rate limiting
 - [ ] Live demo link
