@@ -1,10 +1,11 @@
 """Long-term question memory (ChromaDB), so the game never repeats a question, even reworded.
 
 How it works:
-- Every accepted question is embedded (turned into a vector that captures its meaning) and saved
-  to a persistent ChromaDB collection on disk, so it survives restarts and new games.
-- Before a new question is accepted, we find the most similar past question. If its cosine
-  distance is below DUPLICATE_DISTANCE, the new question counts as a repeat and is rejected.
+- Every accepted question is embedded (turned into a vector that captures its meaning) together
+  with its answer, and saved to a persistent ChromaDB collection on disk, so it survives restarts.
+- Before a new question is accepted, we look at the 5 most similar past questions and apply a
+  hybrid rule (see is_duplicate): distance alone overlapped on real data, but every real repeat
+  shared its answer and every false alarm didn't. DEVLOG bug 8 has the numbers.
 
 All ChromaDB code lives in this file (see CLAUDE.md).
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import uuid
 from dataclasses import dataclass
 from typing import Any
@@ -25,13 +27,35 @@ COLLECTION = "questions"
 # them further apart. tune_threshold.py measures both modes on real question pairs.
 INCLUDE_ANSWER = True
 
-# Cosine distance (0 = same meaning, bigger = less similar) below which a question is a repeat.
-# Provisional until confirmed with tune_threshold.py on real pairs; override with DUPLICATE_DISTANCE.
-DEFAULT_DUPLICATE_DISTANCE = 0.25
+# Cosine distance: 0 = same meaning, bigger = less similar. Picked with tune_threshold.py on real pairs.
+DEFAULT_SAME_ANSWER_DISTANCE = 0.5   # same answer and this close = repeat (catches loose rewordings)
+DEFAULT_ANY_ANSWER_DISTANCE = 0.05   # different answer = repeat only if the question is nearly identical
+NEIGHBOURS = 5                       # how many nearest past questions to check
 
 
-def duplicate_threshold() -> float:
-    return float(os.getenv("DUPLICATE_DISTANCE", DEFAULT_DUPLICATE_DISTANCE))
+def same_answer_cutoff() -> float:
+    return float(os.getenv("DUP_SAME_ANSWER_DISTANCE", DEFAULT_SAME_ANSWER_DISTANCE))
+
+
+def any_answer_cutoff() -> float:
+    return float(os.getenv("DUP_ANY_ANSWER_DISTANCE", DEFAULT_ANY_ANSWER_DISTANCE))
+
+
+_ARTICLES = {"the", "a", "an"}
+
+
+def normalise_answer(text: str) -> list[str]:
+    """Answer as lowercase words, no punctuation, no leading article: "The Tap!" -> ["tap"]."""
+    words = re.sub(r"[^\w\s]", " ", text.lower()).split()
+    while words and words[0] in _ARTICLES:
+        words = words[1:]
+    return words
+
+
+def answers_match(a: str, b: str) -> bool:
+    """Loose match: equal, or one answer's words all appear in the other ("Jay" vs "Jay Pritchett")."""
+    wa, wb = set(normalise_answer(a)), set(normalise_answer(b))
+    return bool(wa and wb) and (wa <= wb or wb <= wa)
 
 
 def to_document(question: str, answer: str) -> str:
@@ -45,6 +69,18 @@ class Match:
     answer: str
     topic: str
     distance: float
+
+
+def is_duplicate(match: Match, answer: str) -> bool:
+    """The hybrid rule: a close question with the same answer, or a near-identical question."""
+    if answers_match(match.answer, answer):
+        return match.distance < same_answer_cutoff()
+    return match.distance < any_answer_cutoff()
+
+
+def find_duplicate(matches: list[Match], answer: str) -> Match | None:
+    """The first of the nearest past questions that counts as a repeat, if any."""
+    return next((m for m in matches if is_duplicate(m, answer)), None)
 
 
 class QuestionMemory:
@@ -70,15 +106,15 @@ class QuestionMemory:
     def count(self) -> int:
         return self._col.count()
 
-    def nearest(self, question: str, answer: str) -> Match | None:
-        """The most similar stored question, or None if the memory is empty."""
-        if self._col.count() == 0:
-            return None
-        res = self._col.query(query_texts=[to_document(question, answer)], n_results=1,
+    def nearest(self, question: str, answer: str, k: int = NEIGHBOURS) -> list[Match]:
+        """The k most similar stored questions, closest first (empty list if the memory is empty)."""
+        count = self._col.count()
+        if count == 0:
+            return []
+        res = self._col.query(query_texts=[to_document(question, answer)], n_results=min(k, count),
                               include=["metadatas", "distances"])
-        meta = res["metadatas"][0][0]
-        return Match(question=meta["question"], answer=meta["answer"], topic=meta["topic"],
-                     distance=float(res["distances"][0][0]))
+        return [Match(question=meta["question"], answer=meta["answer"], topic=meta["topic"], distance=float(d))
+                for meta, d in zip(res["metadatas"][0], res["distances"][0])]
 
     def add(self, question: str, answer: str, topic: str, difficulty: str, game_id: str) -> None:
         self._col.add(ids=[uuid.uuid4().hex], documents=[to_document(question, answer)],

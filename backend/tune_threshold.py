@@ -1,8 +1,9 @@
-"""Pick the duplicate cutoff from data, not a guess.
+"""Pick the duplicate cutoffs from data, not a guess.
 
 Embeds pairs of questions that are the SAME fact reworded, and pairs that are DIFFERENT facts
-(often with similar wording), then prints their cosine distances and suggests a cutoff.
-It also compares embedding the question alone vs question + answer (memory.INCLUDE_ANSWER).
+(often with similar wording), then prints their cosine distances. It compares embedding the
+question alone vs question + answer, and scores the hybrid rule the game uses (memory.is_duplicate:
+distance plus an answer check).
 
 Run from backend/ with the venv active:  python tune_threshold.py
 Many pairs come from real game logs. Add your own pairs whenever the game gets one wrong.
@@ -10,6 +11,8 @@ Many pairs come from real game logs. Add your own pairs whenever the game gets o
 import math
 
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
+
+import memory
 
 # (question A, answer A, question B, answer B)
 SAME = [  # same fact, reworded: should be caught as a repeat
@@ -94,9 +97,30 @@ def report(embed, with_answer: bool) -> None:
             print(f"  cutoff {t:.2f}: catches {caught}/{len(same)} repeats, wrongly rejects {wrongly}/{len(diff)}")
 
 
+def hybrid_report(embed) -> None:
+    """Score the game's actual rule (memory.is_duplicate) with its current cutoffs."""
+    same, diff = distances(embed, SAME, True), distances(embed, DIFFERENT, True)
+
+    def verdict(d: float, stored_answer: str, new_answer: str) -> bool:
+        return memory.is_duplicate(memory.Match("", stored_answer, "", d), new_answer)
+
+    caught = [verdict(d, aa, ab) for d, (_, aa, _, ab) in zip(same, SAME)]
+    wrong = [verdict(d, aa, ab) for d, (_, aa, _, ab) in zip(diff, DIFFERENT)]
+    print(f"\n=== Hybrid rule (question + answer; same answer < {memory.same_answer_cutoff()}, "
+          f"different answer < {memory.any_answer_cutoff()}) ===")
+    print(f"Catches {sum(caught)}/{len(SAME)} repeats, wrongly rejects {sum(wrong)}/{len(DIFFERENT)}")
+    for ok, d, (qa, _, qb, _) in zip(caught, same, SAME):
+        if not ok:
+            print(f"  missed  {d:.3f}  {qa[:45]!r} vs {qb[:45]!r}")
+    for bad, d, (qa, _, qb, _) in zip(wrong, diff, DIFFERENT):
+        if bad:
+            print(f"  wrongly {d:.3f}  {qa[:45]!r} vs {qb[:45]!r}")
+
+
 if __name__ == "__main__":
     embed = DefaultEmbeddingFunction()
     report(embed, with_answer=False)
     report(embed, with_answer=True)
-    print("\nPick the mode and cutoff that catch the most repeats while wrongly rejecting ~none.")
+    hybrid_report(embed)
+    print("\nGoal: catch every repeat while wrongly rejecting ~none.")
     print("A missed repeat breaks the game's promise; a wrong rejection only costs the model one retry.")

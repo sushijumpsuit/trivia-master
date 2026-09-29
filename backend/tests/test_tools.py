@@ -135,3 +135,24 @@ def test_broken_memory_does_not_stop_the_game():
     import memory
     memory.set_memory(FakeMemory(fail=True))
     assert run_tool(new_game(), "generate_question", {"question": "q", "answer": "a", "difficulty": "easy"})["status"] == "ok"
+
+
+
+def test_same_wording_different_fact_is_accepted(fake_memory):
+    """Bug 8 regression: the old single cutoff wrongly rejected this pair (distance 0.107)."""
+    son = "What is the name of Gloria's son from her first marriage?"
+    father = "What is the name of Manny's biological father, Gloria's first husband?"
+    fake_memory.distances = FakeMemory(distances={(son, father): 0.107}).distances
+    run_tool(new_game(), "generate_question", {"question": son, "answer": "Manny", "difficulty": "easy"})
+    result = run_tool(new_game(), "generate_question", {"question": father, "answer": "Javier", "difficulty": "easy"})
+    assert result["status"] == "ok"
+
+
+def test_loose_rewording_with_same_answer_is_rejected(fake_memory):
+    """Bug 8 regression: distance alone missed this repeat (0.441), the answer check catches it."""
+    a = "Who is the patriarch of the Pritchett family, the father of Claire and Mitchell?"
+    b = "What is the name of the family's grumpy but lovable patriarch, played by Ed O'Neill?"
+    fake_memory.distances = FakeMemory(distances={(a, b): 0.441}).distances
+    run_tool(new_game(), "generate_question", {"question": a, "answer": "Jay Pritchett", "difficulty": "easy"})
+    result = run_tool(new_game(), "generate_question", {"question": b, "answer": "Jay Pritchett", "difficulty": "easy"})
+    assert "error" in result and a in result["error"]

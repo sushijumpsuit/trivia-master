@@ -14,26 +14,30 @@ class FakeMemory:
     """In-memory stand-in for QuestionMemory (no ChromaDB, no embedding model).
 
     Exact same question = distance 0.0. `similar` lists question pairs to treat as rewordings
-    (distance 0.05). Everything else is distance 1.0.
+    (distance 0.05). `distances` sets exact distances for chosen pairs, to replay real numbers.
+    Everything else is distance 1.0.
     """
 
-    def __init__(self, similar=(), fail=False):
+    def __init__(self, similar=(), fail=False, distances=None):
         self.items = []
         self.similar = {frozenset((normalise_question(a), normalise_question(b))) for a, b in similar}
+        self.distances = {frozenset((normalise_question(a), normalise_question(b))): d
+                          for (a, b), d in (distances or {}).items()}
         self.fail = fail
 
     def _distance(self, a, b):
         a, b = normalise_question(a), normalise_question(b)
-        return 0.0 if a == b else 0.05 if frozenset((a, b)) in self.similar else 1.0
+        pair = frozenset((a, b))
+        if a == b:
+            return 0.0
+        return self.distances.get(pair, 0.05 if pair in self.similar else 1.0)
 
-    def nearest(self, question, answer):
+    def nearest(self, question, answer, k=memory.NEIGHBOURS):
         if self.fail:
             raise RuntimeError("chroma is down")
-        if not self.items:
-            return None
-        best = min(self.items, key=lambda it: self._distance(question, it["question"]))
-        return memory.Match(question=best["question"], answer=best["answer"], topic=best["topic"],
-                            distance=self._distance(question, best["question"]))
+        ranked = sorted(self.items, key=lambda it: self._distance(question, it["question"]))[:k]
+        return [memory.Match(question=it["question"], answer=it["answer"], topic=it["topic"],
+                             distance=self._distance(question, it["question"])) for it in ranked]
 
     def add(self, question, answer, topic, difficulty, game_id):
         if self.fail:
@@ -49,8 +53,9 @@ class FakeMemory:
 
 @pytest.fixture(autouse=True)
 def fake_memory(monkeypatch):
-    """Every test gets a fresh, empty fake memory and the default cutoff."""
-    monkeypatch.delenv("DUPLICATE_DISTANCE", raising=False)
+    """Every test gets a fresh, empty fake memory and the default cutoffs."""
+    monkeypatch.delenv("DUP_SAME_ANSWER_DISTANCE", raising=False)
+    monkeypatch.delenv("DUP_ANY_ANSWER_DISTANCE", raising=False)
     m = FakeMemory()
     memory.set_memory(m)
     yield m

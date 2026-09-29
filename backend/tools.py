@@ -62,18 +62,21 @@ def check_memory(state: GameState, question: str, answer: str) -> dict[str, Any]
     shouldn't stop the game.
     """
     try:
-        match = memory.get_memory().nearest(question, answer)
+        matches = memory.get_memory().nearest(question, answer)
     except Exception as e:  # ChromaDB/embedding failure
         log.warning("[game %s] memory check failed, skipping: %s", state.id[:6], e)
         return None
-    if match is None:
+    if not matches:
         return None
-    threshold = memory.duplicate_threshold()
-    log.info("[game %s] dup-check distance=%.3f (cutoff %.2f) nearest=%r", state.id[:6], match.distance,
-             threshold, match.question)
-    if match.distance < threshold:
-        return {"error": (f"Too similar to a question already asked: \"{match.question}\" "
-                          f"(answer: {match.answer}). Write a question about a different fact.")}
+    duplicate = memory.find_duplicate(matches, answer)
+    top = matches[0]
+    # Logged for every check, so real games keep giving data to confirm the cutoffs.
+    log.info("[game %s] dup-check %s | nearest distance=%.3f same_answer=%s q=%r a=%r", state.id[:6],
+             "REPEAT" if duplicate else "ok", top.distance, memory.answers_match(top.answer, answer),
+             top.question, top.answer)
+    if duplicate:
+        return {"error": (f"Too similar to a question already asked: \"{duplicate.question}\" "
+                          f"(answer: {duplicate.answer}). Write a question about a different fact.")}
     return None
 
 
