@@ -2,6 +2,8 @@
 
 An AI-hosted trivia game that never asks the same question twice, even reworded, even across games.
 
+**Live demo: [main.d286bzw86yrw57.amplifyapp.com](https://main.d286bzw86yrw57.amplifyapp.com/)** (demo limits apply, so it may ask you to try a shorter game or come back tomorrow)
+
 Pick a topic per round. An LLM agent writes the questions, marks your answers (typos and short forms are fine) and keeps score. Every new question is checked against a vector database of everything asked before. Game rules run in code, not the prompt, so the model can't skip a question, score twice or repeat itself.
 
 <p align="center">
@@ -62,6 +64,7 @@ flowchart LR
 - **Context engineering.** A `check_answer` tool was removed because the model ignored its result. The model gets the questions and answers already used on the topic instead, and the eval showed what memory it actually needs (see Memory vs cost).
 - **Atomic turns.** If a turn fails halfway, game state is restored so the player can retry.
 - **Provider-neutral LLM layer.** Two hand-written adapters (Anthropic Messages API, OpenAI chat format for OpenAI, DeepSeek, Groq, Gemini) behind one interface. One env variable switches provider.
+- **Safe to put online.** Per-visitor and daily question limits are checked before a game starts, so strangers can't run up the LLM bill. The backend runs in Docker on EC2 behind Caddy (automatic HTTPS); the frontend is static files on Amplify.
 - **Tested without API calls.** 102 pytest tests with a fake LLM, including replays of real failures.
 
 Every bug, with cause and fix, is in [DEVLOG.md](DEVLOG.md).
@@ -72,7 +75,7 @@ Every bug, with cause and fix, is in [DEVLOG.md](DEVLOG.md).
 **Backend:** Python 3.11, FastAPI, Pydantic
 **AI:** tool-calling LLM agent, ChromaDB with all-MiniLM-L6-v2 embeddings
 **Testing:** pytest, Playwright
-**DevOps:** Docker, Docker Compose
+**DevOps:** Docker, Docker Compose, AWS EC2, AWS Amplify, Caddy
 
 ## Run it locally
 
@@ -113,9 +116,9 @@ From `backend/`: `pytest` (tests), `python eval_game.py --games 3` (auto-play an
 - [x] Evaluation script
 - [x] Trim conversation history
 - [x] Compact list of past questions in the prompt
-- [ ] Docker and docker-compose
-- [ ] Deploy (AWS EC2 backend, AWS Amplify frontend) with rate limiting
-- [ ] Live demo link
+- [x] Docker and docker-compose
+- [x] Deploy (AWS EC2 backend, AWS Amplify frontend) with rate limiting
+- [x] Live demo link
 
 **Known limitations:** "inverse" questions are not treated as repeats ("What breed is Stella?" then "What is the French bulldog called?"). Question accuracy depends on the model.
 
