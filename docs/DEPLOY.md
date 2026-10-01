@@ -116,3 +116,11 @@ git pull && docker compose -f docker-compose.prod.yml up -d --build   # deploy a
 ```
 
 Pushing to GitHub redeploys the frontend on Amplify automatically.
+
+## Automatic backend deploys (GitHub Actions)
+
+`.github/workflows/deploy-backend.yml` runs the tests on every push that changes the backend, then redeploys it over SSH and checks `/health`. One-time setup:
+
+1. Make a separate key for GitHub: `ssh-keygen -t ed25519 -f github-deploy -N ""`, and append `github-deploy.pub` to `~/.ssh/authorized_keys` on the server.
+2. Allow SSH (22) from anywhere in the security group, since GitHub's runners use changing IPs (the server only accepts key logins).
+3. In the repo settings: secrets `EC2_HOST` (the Elastic IP) and `EC2_SSH_KEY` (the private key file's contents), and the variable `API_URL` (`https://<name>.duckdns.org`).

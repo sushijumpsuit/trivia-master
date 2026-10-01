@@ -65,6 +65,7 @@ flowchart LR
 - **Atomic turns.** If a turn fails halfway, game state is restored so the player can retry.
 - **Provider-neutral LLM layer.** Two hand-written adapters (Anthropic Messages API, OpenAI chat format for OpenAI, DeepSeek, Groq, Gemini) behind one interface. One env variable switches provider.
 - **Safe to put online.** Per-visitor and daily question limits are checked before a game starts, so strangers can't run up the LLM bill. The backend runs in Docker on EC2 behind Caddy (automatic HTTPS); the frontend is static files on Amplify.
+- **CI/CD.** Every push that touches the backend runs the test suite in GitHub Actions; if it passes, the workflow SSHes into EC2, rebuilds the containers and checks `/health` on the live site. Frontend pushes redeploy through Amplify.
 - **Tested without API calls.** 102 pytest tests with a fake LLM, including replays of real failures.
 
 Every bug, with cause and fix, is in [DEVLOG.md](DEVLOG.md).
@@ -75,7 +76,7 @@ Every bug, with cause and fix, is in [DEVLOG.md](DEVLOG.md).
 **Backend:** Python 3.11, FastAPI, Pydantic
 **AI:** tool-calling LLM agent, ChromaDB with all-MiniLM-L6-v2 embeddings
 **Testing:** pytest, Playwright
-**DevOps:** Docker, Docker Compose, AWS EC2, AWS Amplify, Caddy
+**DevOps:** Docker, Docker Compose, AWS EC2, AWS Amplify, Caddy, GitHub Actions (CI/CD)
 
 ## Run it locally
 
@@ -119,6 +120,7 @@ From `backend/`: `pytest` (tests), `python eval_game.py --games 3` (auto-play an
 - [x] Docker and docker-compose
 - [x] Deploy (AWS EC2 backend, AWS Amplify frontend) with rate limiting
 - [x] Live demo link
+- [x] CI/CD with GitHub Actions (test, then redeploy the backend)
 
 **Known limitations:** "inverse" questions are not treated as repeats ("What breed is Stella?" then "What is the French bulldog called?"). Question accuracy depends on the model.
 
