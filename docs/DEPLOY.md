@@ -36,6 +36,16 @@ Then **Elastic IPs**, allocate one and associate it with the instance, so the ad
 
 Connect (from the folder with the `.pem` file):
 
+On Windows, SSH refuses a key file other users can read. Fix it once in cmd:
+
+```
+icacls trivia-key.pem /inheritance:r
+icacls trivia-key.pem /grant:r "%USERNAME%":R
+icacls trivia-key.pem /remove "NT AUTHORITY\Authenticated Users" "BUILTIN\Users" "Everyone"
+```
+
+If SSH later times out, your home IP probably changed: set the SSH rule's source to **My IP** again.
+
 ```bash
 ssh -i trivia-key.pem ubuntu@<elastic-ip>
 ```
@@ -79,16 +89,23 @@ In the Amplify console: **Create new app**, GitHub, pick the repo and branch. Am
 
 Deploy. You get an address like `https://main.d1234abcd.amplifyapp.com`.
 
+**If the deploy fails with `Can't find required-server-files.json`:** Amplify set the app up as a server-rendered Next.js app. Switch it to static hosting in CloudShell (the `>_` icon in the AWS console), using your app ID (the `d...` part of the address) and branch name, then redeploy:
+
+```bash
+aws amplify update-app --app-id <app-id> --platform WEB
+aws amplify update-branch --app-id <app-id> --branch-name main --framework "Web"
+```
+
 ## 5. Connect the two
 
 The backend only accepts requests from the frontend's address. On the server:
 
 ```bash
 nano backend/.env      # FRONTEND_ORIGINS=https://main.d1234abcd.amplifyapp.com
-docker compose -f docker-compose.prod.yml up -d
+docker compose -f docker-compose.prod.yml up -d --force-recreate backend
 ```
 
-Open the Amplify address and play a game.
+Open the Amplify address and play a game. A CORS error in the browser console means `FRONTEND_ORIGINS` doesn't exactly match the Amplify address (check `https://` and no trailing slash).
 
 ## Everyday commands (on the server)
 
