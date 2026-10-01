@@ -110,3 +110,16 @@
  - how to fix: keep the trimming, but put the questions already asked on the topic into the system prompt (about 20 tokens each, last 30 or so, about 600 tokens). That gives back the memory that mattered without replaying reactions, tool results and reasoning. Next eval run checks it.
  - lesson: the model needs memory, and you pay for it either way: up front in context, or later in retries and latency. The job is to find the smallest form of memory that still works.
  - result: with the past-questions list, rejections fell to 25 and calls to 1.38 per question (3.45 s per turn). Cost stayed at $0.00183 per question, because the list's extra input tokens cancelled most of the saving from fewer retries. Overall still 30% cheaper than full history. The model still proposes a few favourite facts even when they are listed (Greenland 4 times), but the server blocks them.
+
+
+## Bug 15: Amplify build passed but the deploy failed
+ - scenario: first Amplify deploy. The Next.js build finished and generated all static pages, then the deploy step failed with `Can't find required-server-files.json in build output directory`.
+ - what went wrong: Amplify saw Next.js and set the app up as a server-rendered app (platform WEB_COMPUTE), which expects server files after the build. This app is built as plain static files (`NEXT_OUTPUT=export`), because Amplify doesn't support Next.js 16 servers yet and the page needs no server.
+ - how to fix: switched the app to static hosting with the AWS CLI (`update-app --platform WEB`, `update-branch --framework "Web"`) and redeployed. Added the fix to docs/DEPLOY.md.
+ - lesson: hosting platforms guess the app type from the framework. When the build output doesn't match their guess, set the type explicitly.
+
+## Bug 16: Docker build failed on folder permissions, then the live site was blocked by CORS
+ - scenario: (1) the backend image failed at `mkdir chroma_data logs: Permission denied`. (2) After deploying, starting a game failed with a CORS error in the browser.
+ - what went wrong: (1) `/app` was created by root, and `COPY --chown` only changes the copied files, not the folder, so the non-root user couldn't create folders in it. (2) The backend only accepts browser requests from origins in `FRONTEND_ORIGINS`, which still had the localhost value.
+ - how to fix: (1) create the folders as root and hand `/app` to the app user before switching to it. (2) set `FRONTEND_ORIGINS` to the Amplify address and recreate the backend container. Both are in the deploy guide.
+ - lesson: running as a non-root user and strict CORS are both worth keeping; they just need to be set up on purpose.
